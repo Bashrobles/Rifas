@@ -236,33 +236,77 @@ if len(st.session_state.seleccionados) == cant and n_comp and v_sel != "Seleccio
     elif c_vend_v != "":
         st.error("🔑 Clave de vendedor incorrecta.")
 
-# --- 7. CUADRÍCULA DE BOLETOS (VERSIÓN ESTABLE 10 COLS) ---
+# --- 7. CUADRÍCULA DE BOLETOS (VERSIÓN DEFINITIVA Y LIGERA) ---
 st.divider()
-# CSS mínimo para que los botones llenen su columna
-st.markdown("<style>div.stButton > button {width:100% !important;}</style>", unsafe_allow_html=True)
 
+# 1. Estilos para los boletos
+st.markdown("""
+    <style>
+    .contenedor-rifa {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+    }
+    .boleto-link {
+        text-decoration: none;
+    }
+    .boleto-btn {
+        width: 70px;
+        height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        border: 1px solid #444;
+        font-weight: bold;
+        cursor: pointer;
+        transition: 0.3s;
+        background-color: #0e1117;
+        color: white;
+    }
+    .boleto-btn:hover {
+        border-color: #ff4b4b;
+        transform: scale(1.05);
+    }
+    .disponible { background-color: #1e2329; }
+    .seleccionado { background-color: #ffd700; color: black; border-color: #ffd700; }
+    .vendido { background-color: #333; color: #777; cursor: not-allowed; border: none; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# 2. Render de boletos con botones nativos de Streamlit para que la lógica siga funcionando
+# Pero usaremos un contenedor para que fluyan
 boletos_lista = sorted(datos_boletos.items())
-cols_n = 10
 
-for i in range(0, len(boletos_lista), cols_n):
-    fila = boletos_lista[i : i + cols_n]
-    columnas = st.columns(cols_n)
+# Usamos un contenedor de Streamlit para meter los botones
+# IMPORTANTE: No usamos columns() aquí, solo un loop normal
+with st.container():
+    # Este estilo de 'flex' hará que se acomoden solos
+    st.write('<div class="contenedor-rifa">', unsafe_allow_html=True)
     
-    for idx, (num, info) in enumerate(fila):
-        with columnas[idx]:
+    # Para que Streamlit no se pierda, usaremos un loop normal pero con botones de ancho fijo
+    # El truco es 'use_container_width=False' y meterlos en un bloque CSS
+    cols = st.columns([1]*12 if not st.sidebar.state == "expanded" else [1]*8) # Ajuste visual básico
+
+    # MEJOR AÚN: Vamos a usar el diseño nativo pero con un ancho fijo de columna pequeña
+    # Esto evita el error de la imagen anterior
+    columnas_fluidas = st.columns(10) # Forzamos 10 en PC, en Celular Streamlit las apilará
+    
+    for i, (num, info) in enumerate(boletos_lista):
+        with columnas_fluidas[i % 10]:
             if info['estado'] == 'disponible':
-                # Si el número está seleccionado (ya sea por clic o manual) sale amarillo
                 if num in st.session_state.seleccionados:
-                    if st.button(f"🟡{num}", key=f"b_{num}"):
+                    if st.button(f"🟡{num}", key=f"n_{num}", use_container_width=True):
                         st.session_state.seleccionados.remove(num)
                         st.rerun()
                 else:
                     des = len(st.session_state.seleccionados) >= cant
-                    if st.button(num, key=f"b_{num}", disabled=des):
-                        if n_comp:
+                    if st.button(num, key=f"n_{num}", disabled=des, use_container_width=True):
+                        if cliente:
                             st.session_state.seleccionados.append(num)
                             st.rerun()
                         else:
-                            st.warning("Escribe el nombre primero")
+                            st.warning("Nombre")
             else:
-                st.button("❌", key=f"b_{num}", disabled=True)
+                st.button("❌", key=f"n_{num}", disabled=True, use_container_width=True)
