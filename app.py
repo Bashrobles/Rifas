@@ -16,23 +16,29 @@ st.set_page_config(
 # --- 1. CONEXIÓN A FIREBASE ---
 
 # --- 1. CONEXIÓN A FIREBASE ---
+# --- 1. CONEXIÓN A FIREBASE ---
 if not firebase_admin._apps:
     try:
         if "firebase_json" in st.secrets:
-            # Extraemos la info del diccionario de Secrets
+            # Obtenemos la info como diccionario
             cred_info = dict(st.secrets["firebase_json"])
-            # Limpieza profunda de la llave para evitar errores de ASN.1 / Padding
-            cred_info["private_key"] = cred_info["private_key"].replace("\\n", "\n")
+            
+            # 🛠️ TRUCO MAESTRO: Limpiar la llave de cualquier error de pegado
+            # Reemplaza barras dobles por simples y asegura que \n sea un salto real
+            raw_key = cred_info["private_key"]
+            clean_key = raw_key.replace("\\n", "\n")
+            cred_info["private_key"] = clean_key
+            
             cred = credentials.Certificate(cred_info)
         else:
-            # Para correrlo localmente
+            # Local
             cred = credentials.Certificate("credenciales.json")
         
         firebase_admin.initialize_app(cred, {
             'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/' 
         })
     except Exception as e:
-        st.error(f"❌ Error crítico: {e}")
+        st.error(f"❌ Error de conexión: {e}")
         st.stop()
 
 
