@@ -4,7 +4,7 @@ from firebase_admin import credentials, db
 import random
 import urllib.parse
 import json
-import tempfile 
+import tempfile
 import os
 
 # --- CONFIGURACIÓN INICIAL ---
@@ -15,46 +15,50 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 1. CONEXIÓN A FIREBASE ---
-
-# --- 1. CONEXIÓN A FIREBASE ---
-# --- 1. CONEXIÓN A FIREBASE ---
-# --- 1. CONEXIÓN A FIREBASE ---
-# --- 1. CONEXIÓN A FIREBASE (VERSIÓN ROBUSTA) ---
+# --- 1. CONEXIÓN A FIREBASE (VERSIÓN DEFINITIVA) ---
 if not firebase_admin._apps:
     try:
+        # Prioridad 1: Secrets de Streamlit Cloud (Producción)
         if "FIREBASE_RAW_JSON" in st.secrets:
-            # Creamos un archivo temporal para guardar el JSON
-            with tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".json") as temp_file:
-                # Escribimos el contenido de los secrets directamente al archivo
-                temp_file.write(st.secrets["FIREBASE_RAW_JSON"])
-                temp_path = temp_file.name
+            # Cargamos el string y lo convertimos a diccionario
+            cred_dict = json.loads(st.secrets["FIREBASE_RAW_JSON"])
             
-            # Inicializamos usando la ruta del archivo temporal
+            # REPARACIÓN: Convertimos el texto "\n" en saltos de línea reales
+            if "private_key" in cred_dict:
+                cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+            
+            # Creamos archivo temporal para que Firebase lo lea sin errores de padding
+            with tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".json") as temp_f:
+                json.dump(cred_dict, temp_f)
+                temp_path = temp_f.name
+            
             cred = credentials.Certificate(temp_path)
             firebase_admin.initialize_app(cred, {
                 'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/' 
             })
+            os.remove(temp_path) # Borramos rastro por seguridad
             
-            # Borramos el archivo temporal de la memoria por seguridad
-            os.remove(temp_path)
-        else:
-            # Caso local
+        # Prioridad 2: Archivo local (Desarrollo)
+        elif os.path.exists("credenciales.json"):
             cred = credentials.Certificate("credenciales.json")
             firebase_admin.initialize_app(cred, {
                 'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/' 
             })
+        else:
+            st.error("❌ No se encontró configuración de Firebase.")
+            st.stop()
+            
     except Exception as e:
         st.error(f"❌ Error crítico de conexión: {e}")
         st.stop()
 
-
+# Referencias de Base de Datos
 boletos_ref = db.reference('boletos')
 config_ref = db.reference('configuracion')
 vendedores_ref = db.reference('vendedores')
 
-# --- 2. FUNCIONES DE INICIALIZACIÓN ---
-def inicializar_bd(total=1000):
+# --- 2. FUNCIONES DE APOYO ---
+def inicializar_bd(total=100):
     nuevos_boletos = {}
     digitos = len(str(total - 1))
     for i in range(0, total):
@@ -62,29 +66,20 @@ def inicializar_bd(total=1000):
         nuevos_boletos[num_str] = {"estado": "disponible", "dueño": "", "telefono": "", "notificado": False, "vendedor": ""}
     boletos_ref.set(nuevos_boletos)
     
-    # NUEVA PLANTILLA ACTUALIZADA SEGÚN TU SOLICITUD
     default_msg = (
         "Hola {{nombre}}, gracias por colaborar a las rifas para apoyo estudiantil. "
         "Confirmamos la compra de tus boletos: {{boletos}}. "
         "La rifa se llevara a cabo el 21 de agosto en base a los ultimos 3 digitos del premio mayor de la loteria nacional mexicana. "
-        "Puedes seguir el proceso y ver los resultados en nuestras redes sociales: "
-        "Facebook: [LINK DE TU PÁGINA] "
-        "Instagram: https://www.instagram.com/rifas_cucei?utm_source=qr&igsh=ZjRpaTA1b3VwanJ5 "
-        "Mucha suerte."
+        "Puedes seguir el proceso en nuestras redes sociales: [Links Aquí]. Mucha suerte."
     )
-    
-    config_ref.set({
-        "mensaje_template": default_msg,
-        "precio_boleto": 50.0
-    })
+    config_ref.set({"mensaje_template": default_msg, "precio_boleto": 50.0})
 
-# Carga de Datos
+# Lectura inicial de datos
 datos_crudos = boletos_ref.get()
-config_datos = config_ref.get()
+config_datos = config_ref.get() or {}
 vendedores_datos = vendedores_ref.get() or {}
 
-if not datos_crudos:
-    # Por defecto inicia con 100 si la base está vacía
+if datos_crudos is None:
     inicializar_bd(100)
     st.rerun()
 
@@ -94,31 +89,26 @@ PRECIO_BOLETO = config_datos.get('precio_boleto', 0.0)
 if 'seleccionados' not in st.session_state:
     st.session_state.seleccionados = []
 
-# Procesamiento de formato de boletos
+# Procesar boletos (maneja listas o dicts de Firebase)
 datos_boletos = {}
 if isinstance(datos_crudos, list):
     for i, info in enumerate(datos_crudos):
-        if info is not None: datos_boletos[str(i).zfill(len(str(len(datos_crudos)-1)))] = info
-elif isinstance(datos_crudos, dict):
+        if info: datos_boletos[str(i).zfill(len(str(len(datos_crudos)-1)))] = info
+else:
     datos_boletos = datos_crudos
 
-# --- 3. DIÁLOGOS (MODALES) ---
-@st.dialog("📝 Editar Plantilla de Mensaje")
+# --- 3. MODALES ---
+@st.dialog("📝 Editar Plantilla WhatsApp")
 def ventana_mensaje():
     nuevo_texto = st.text_area("Cuerpo del mensaje:", value=MENSAJE_TEMPLATE, height=200)
-    if st.button("💾 Guardar Plantilla"):
+    if st.button("💾 Guardar"):
         config_ref.update({"mensaje_template": nuevo_texto})
-        st.success("Guardado correctamente.")
         st.rerun()
 
 @st.dialog("🛒 Confirmar Venta")
 def confirmar_venta(nombre, telefono, boletos, vendedor_id, vendedor_nombre):
-    st.write(f"**Cliente:** {nombre}")
-    st.write(f"**Boletos:** {', '.join(sorted(boletos))}")
-    st.write(f"**Vendedor:** {vendedor_nombre}")
-    
-    col_si, col_no = st.columns(2)
-    if col_si.button("✅ Registrar", use_container_width=True):
+    st.warning(f"¿Confirmar registro para {nombre}?")
+    if st.button("✅ Confirmar y Registrar"):
         for b in boletos:
             boletos_ref.child(b).update({
                 "estado":"ocupado", "dueño":nombre, "telefono":telefono, 
@@ -128,173 +118,105 @@ def confirmar_venta(nombre, telefono, boletos, vendedor_id, vendedor_nombre):
         vendedores_ref.child(vendedor_id).update({'ventas': ventas_actuales + len(boletos)})
         st.session_state.seleccionados = []
         st.rerun()
-    if col_no.button("❌ Cancelar", use_container_width=True):
-        st.session_state.seleccionados = []
-        st.rerun()
 
-# --- 4. PANEL ADMINISTRADOR ---
+# --- 4. PANEL DE CONTROL (SIDEBAR) ---
 with st.sidebar:
-    st.header("⚙️ Panel Admin")
-    if st.toggle("Desbloquear Opciones"):
-        password = st.text_input("Clave Maestra:", type="password", autocomplete="new-password")
-        
-        if password == "1234":
-            st.success("Acceso Autorizado")
+    st.title("⚙️ Administración")
+    if st.toggle("Acceso Admin"):
+        pw = st.text_input("Contraseña:", type="password")
+        if pw == "1234":
+            st.success("Autorizado")
             st.divider()
-
-            # --- 📊 BARRA DE PROGRESO ---
-            total_b = len(datos_boletos)
-            ocupados_list = [k for k, v in datos_boletos.items() if v['estado'] == 'ocupado']
-            vendidos_n = len(ocupados_list)
-            porcentaje = (vendidos_n / total_b) if total_b > 0 else 0
             
-            st.subheader("📈 Avance de Ventas")
-            st.progress(porcentaje)
-            st.write(f"Progreso: **{porcentaje*100:.1f}%** ({vendidos_n}/{total_b})")
-            st.divider()
-
-            # --- 📩 1. PENDIENTES WHATSAPP ---
-            st.subheader("📩 Mensajes Pendientes")
-            pendientes = {k: v for k, v in datos_boletos.items() if v['estado'] == 'ocupado' and not v.get('notificado', False)}
+            # Progreso
+            total_b = len(datos_boletos)
+            vendidos = len([k for k, v in datos_boletos.items() if v['estado'] == 'ocupado'])
+            st.metric("Boletos Vendidos", f"{vendidos}/{total_b}", f"{int((vendidos/total_b)*100)}%")
+            
+            # WhatsApp Pendientes
+            st.subheader("📩 Pendientes")
+            pendientes = [k for k, v in datos_boletos.items() if v['estado'] == 'ocupado' and not v.get('notificado')]
             if pendientes:
+                # Agrupar por dueño para no mandar mil mensajes a la misma persona
                 agrupados = {}
-                for num, info in pendientes.items():
+                for b in pendientes:
+                    info = datos_boletos[b]
                     llave = (info['dueño'], info['telefono'])
                     if llave not in agrupados: agrupados[llave] = []
-                    agrupados[llave].append(num)
+                    agrupados[llave].append(b)
                 
-                for (comprador, tel), lista in agrupados.items():
-                    llave_base = f"{comprador}_{tel}_{lista[0]}"
-                    with st.expander(f"👤 {comprador} ({len(lista)})"):
+                for (dueño, tel), nums in agrupados.items():
+                    with st.expander(f"👤 {dueño}"):
                         if tel:
-                            t_limpio = "".join(filter(str.isdigit, tel))
-                            if len(t_limpio) == 10: t_limpio = "52" + t_limpio
-                            msj = MENSAJE_TEMPLATE.replace("{{nombre}}", comprador).replace("{{boletos}}", ", ".join(lista))
-                            st.link_button("📲 Enviar WhatsApp", f"https://wa.me/{t_limpio}?text={urllib.parse.quote(msj)}")
-                        
-                        col_e, col_c = st.columns(2)
-                        if col_e.button("✅ Enviado", key=f"btn_env_{llave_base}"):
-                            for b in lista: boletos_ref.child(b).update({"notificado": True})
+                            t = "".join(filter(str.isdigit, tel))
+                            if len(t) == 10: t = "52" + t
+                            m = MENSAJE_TEMPLATE.replace("{{nombre}}", dueño).replace("{{boletos}}", ", ".join(nums))
+                            st.link_button("📲 Enviar", f"https://wa.me/{t}?text={urllib.parse.quote(m)}")
+                        if st.button(f"Marcar como Enviado", key=f"env_{nums[0]}"):
+                            for n in nums: boletos_ref.child(n).update({"notificado": True})
                             st.rerun()
-                        if col_c.button("🚫 Cancelar", key=f"btn_can_{llave_base}", type="primary"):
-                            for b in lista: boletos_ref.child(b).update({"estado":"disponible", "dueño":"", "vendedor":"", "telefono": "", "notificado": False})
-                            st.rerun()
-            else:
-                st.info("No hay pendientes.")
+            
             st.divider()
-
-            # --- 🔍 2. BUSCAR / LIBERAR ---
-            st.subheader("🔍 Gestión de Números")
-            if ocupados_list:
-                b_rev = st.selectbox("Elegir boleto vendido:", sorted(ocupados_list, key=int))
-                info_b = datos_boletos[b_rev]
-                st.write(f"Dueño: {info_b['dueño']} | Vendedor: {info_b.get('vendedor', 'N/A')}")
-                if st.button("🔓 Liberar Número", type="primary"):
-                    boletos_ref.child(b_rev).update({"estado": "disponible", "dueño": "", "telefono": "", "notificado": False, "vendedor": ""})
-                    st.rerun()
-            st.divider()
-
-            # --- 👥 3. VENDEDORES ---
+            if st.button("📧 Editar Mensaje"): ventana_mensaje()
+            
             st.subheader("👥 Vendedores")
-            with st.expander("➕ Nuevo Vendedor"):
-                n_vend = st.text_input("Nombre:")
-                c_vend = st.text_input("Clave de acceso:", type="password")
-                if st.button("Crear"):
-                    vendedores_ref.push({'nombre': n_vend, 'clave': c_vend, 'ventas': 0})
-                    st.rerun()
-            
-            if vendedores_datos:
-                with st.expander("🗑️ Eliminar Vendedor"):
-                    v_opciones_del = {v['nombre']: k for k, v in vendedores_datos.items()}
-                    v_a_borrar = st.selectbox("Seleccionar para borrar:", options=list(v_opciones_del.keys()))
-                    if st.button("⚠️ Borrar Definitivamente"):
-                        vendedores_ref.child(v_opciones_del[v_a_borrar]).delete()
-                        st.rerun()
-
-                st.write("**Corte de Caja:**")
-                for vid, vinfo in vendedores_datos.items():
-                    st.write(f"- {vinfo['nombre']}: {vinfo.get('ventas', 0)} vendidos")
-                
-                if st.button("💰 Resetear Corte (Cero)"):
-                    for vid in vendedores_datos: vendedores_ref.child(vid).update({'ventas': 0})
-                    st.rerun()
-            st.divider()
-
-            # --- 4. EXTRAS ---
-            if st.button("📧 Editar Mensaje", use_container_width=True):
-                ventana_mensaje()
-            
-            st.subheader("📢 Difusión")
-            contactos = {v['telefono']: v['dueño'] for v in datos_boletos.values() if v['estado'] == 'ocupado' and v['telefono']}
-            if contactos:
-                csv = "Name,Phone\n" + "\n".join([f"{n},{t}" for t, n in contactos.items()])
-                st.download_button("📥 Descargar Contactos CSV", csv, "contactos.csv", "text/csv", use_container_width=True)
-            
-            st.divider()
-            st.subheader("⚠️ Zona Peligrosa")
-            nuevo_t = st.number_input("Cantidad total:", value=len(datos_boletos))
-            precio_t = st.number_input("Precio:", value=PRECIO_BOLETO)
-            if st.button("🚨 REINICIAR TODO"):
-                inicializar_bd(nuevo_t)
-                config_ref.update({"precio_boleto": precio_t})
-                st.session_state.seleccionados = []
+            v_nom = st.text_input("Nombre Nuevo:")
+            v_cla = st.text_input("Clave Nueva:", type="password")
+            if st.button("Añadir Vendedor"):
+                vendedores_ref.push({'nombre': v_nom, 'clave': v_cla, 'ventas': 0})
                 st.rerun()
-        elif password != "":
-            st.error("Clave Incorrecta")
+                
+            if st.button("🚨 REINICIAR RIFA"):
+                inicializar_bd(len(datos_boletos))
+                st.rerun()
 
-# --- 5. INTERFAZ VENDEDOR ---
-st.title("🎟️ Sistema de Rifas - Apoyo Estudiantil")
+# --- 5. INTERFAZ PÚBLICA / VENDEDORES ---
+st.title("🎟️ Rifa Apoyo Estudiantil")
+st.write("Selecciona los boletos y completa los datos para registrar la venta.")
 
-# Fila superior de datos
-c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 1.2])
-with c1: n_comp = st.text_input("👤 Nombre Cliente:")
-with c2: t_comp = st.text_input("📞 WhatsApp (10 dígitos):")
+c1, c2, c3, c4 = st.columns(4)
+with c1: cliente = st.text_input("Cliente:")
+with c2: tel = st.text_input("Teléfono:")
 with c3: 
-    v_opc = {v['nombre']: k for k, v in vendedores_datos.items()}
-    v_sel = st.selectbox("🧤 Vendedor:", ["Seleccionar..."] + list(v_opc.keys()))
-with c4: c_vend_v = st.text_input("🔑 Clave Vendedor:", type="password")
+    v_nombres = {v['nombre']: k for k, v in vendedores_datos.items()}
+    v_sel = st.selectbox("Vendedor:", ["Seleccionar..."] + list(v_nombres.keys()))
+with c4: v_pass = st.text_input("Clave Vendedor:", type="password")
 
 st.divider()
 
-# Proceso de Selección
-cant = st.number_input("🎟️ ¿Cuántos boletos?", min_value=1, max_value=len(datos_boletos), value=1)
+# Botones de acción
+col_ran, col_del, _ = st.columns([2, 2, 6])
+cant = st.number_input("Cantidad de boletos:", min_value=1, value=1)
 
-if len(st.session_state.seleccionados) == cant:
-    if not n_comp or v_sel == "Seleccionar...":
-        st.error("⚠️ Falta el nombre del cliente o el vendedor.")
-    else:
-        v_id = v_opc[v_sel]
-        if c_vend_v == vendedores_datos[v_id]['clave']:
-            confirmar_venta(n_comp, t_comp, st.session_state.seleccionados, v_id, v_sel)
-        else:
-            st.error("🔑 Clave de vendedor incorrecta.")
-
-# Botones de ayuda
-col_a, col_l, _ = st.columns([2, 2, 6])
-if col_a.button("🎲 Selección Aleatoria"):
-    libres = [n for n, i in datos_boletos.items() if i['estado'] == 'disponible' and n not in st.session_state.seleccionados]
-    if len(libres) >= (cant - len(st.session_state.seleccionados)):
-        st.session_state.seleccionados.extend(random.sample(libres, cant - len(st.session_state.seleccionados)))
+if col_ran.button("🎲 Aleatorios"):
+    libres = [n for n, v in datos_boletos.items() if v['estado'] == 'disponible' and n not in st.session_state.seleccionados]
+    if len(libres) >= cant:
+        st.session_state.seleccionados = random.sample(libres, cant)
         st.rerun()
-if col_l.button("🗑️ Limpiar Selección"):
+
+if col_del.button("🗑️ Limpiar"):
     st.session_state.seleccionados = []
     st.rerun()
 
-# Cuadrícula de Boletos
+# Lógica de Venta
+if len(st.session_state.seleccionados) >= cant and cliente and v_sel != "Seleccionar...":
+    v_id = v_nombres[v_sel]
+    if v_pass == vendedores_datos[v_id]['clave']:
+        confirmar_venta(cliente, tel, st.session_state.seleccionados, v_id, v_sel)
+
+# Cuadrícula
 cols = st.columns(10)
 for i, (num, info) in enumerate(sorted(datos_boletos.items())):
     with cols[i % 10]:
         if info['estado'] == 'disponible':
             if num in st.session_state.seleccionados:
-                if st.button(f"🟡 {num}", key=f"b_{num}"):
+                if st.button(f"🟡 {num}", key=f"btn_{num}"):
                     st.session_state.seleccionados.remove(num)
                     st.rerun()
             else:
-                if st.button(f"{num}", key=f"b_{num}", disabled=len(st.session_state.seleccionados) >= cant):
-                    if n_comp:
+                if st.button(f"{num}", key=f"btn_{num}", disabled=len(st.session_state.seleccionados) >= cant):
+                    if cliente:
                         st.session_state.seleccionados.append(num)
                         st.rerun()
-                    else:
-                        st.warning("Escribe el nombre primero")
         else:
-            st.button("❌", key=f"b_{num}", disabled=True, help=f"Vendido por: {info.get('vendedor', 'N/A')}")
+            st.button("❌", key=f"btn_{num}", disabled=True, help=f"Vendido por {info.get('vendedor')}")
