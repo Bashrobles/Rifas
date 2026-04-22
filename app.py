@@ -228,18 +228,21 @@ with st.sidebar:
             st.error("Clave Incorrecta")
 
 # --- 5. INTERFAZ VENDEDOR ---
+# --- 5. INTERFAZ VENDEDOR ---
 st.title("🎟️ Sistema de Rifas - Apoyo Estudiantil")
 
+# Fila superior de datos (Ajustada para ser más compacta)
 c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 1.2])
 with c1: n_comp = st.text_input("👤 Nombre Cliente:")
 with c2: t_comp = st.text_input("📞 WhatsApp (10 dígitos):")
 with c3: 
     v_opc = {v['nombre']: k for k, v in vendedores_datos.items()}
     v_sel = st.selectbox("🧤 Vendedor:", ["Seleccionar..."] + list(v_opc.keys()))
-with c4: c_vend_v = st.text_input("🔑 Clave Vendedor:", type="password")
+with c4: c_vend_v = st.text_input("🔑 Clave:", type="password")
 
 st.divider()
 
+# Proceso de Selección
 cant = st.number_input("🎟️ ¿Cuántos boletos?", min_value=1, max_value=len(datos_boletos), value=1)
 
 if len(st.session_state.seleccionados) == cant:
@@ -250,30 +253,40 @@ if len(st.session_state.seleccionados) == cant:
         elif c_vend_v != "":
             st.error("🔑 Clave de vendedor incorrecta.")
 
+# Botones de ayuda
 col_a, col_l, _ = st.columns([2, 2, 6])
-if col_a.button("🎲 Selección Aleatoria"):
+if col_a.button("🎲 Aleatorio", use_container_width=True):
     libres = [n for n, i in datos_boletos.items() if i['estado'] == 'disponible' and n not in st.session_state.seleccionados]
     if len(libres) >= (cant - len(st.session_state.seleccionados)):
         st.session_state.seleccionados.extend(random.sample(libres, cant - len(st.session_state.seleccionados)))
         st.rerun()
-if col_l.button("🗑️ Limpiar Selección"):
+if col_l.button("🗑️ Limpiar", use_container_width=True):
     st.session_state.seleccionados = []
     st.rerun()
 
-cols = st.columns(10)
+st.write(f"Seleccionados: {', '.join(st.session_state.seleccionados)}")
+
+# --- CUADRÍCULA DE BOLETOS OPTIMIZADA ---
+# Forzamos las columnas. Nota: En móviles muy pequeños Streamlit 
+# siempre tiende a apilar, pero esto ayuda a que use mejor el ancho.
+cols = st.columns(10) 
+
 for i, (num, info) in enumerate(sorted(datos_boletos.items())):
     with cols[i % 10]:
         if info['estado'] == 'disponible':
             if num in st.session_state.seleccionados:
-                if st.button(f"🟡 {num}", key=f"b_{num}"):
+                # Botón seleccionado (Amarillo)
+                if st.button(f"🟡{num}", key=f"b_{num}", use_container_width=True):
                     st.session_state.seleccionados.remove(num)
                     st.rerun()
             else:
-                if st.button(f"{num}", key=f"b_{num}", disabled=len(st.session_state.seleccionados) >= cant):
+                # Botón disponible
+                if st.button(f"{num}", key=f"b_{num}", disabled=len(st.session_state.seleccionados) >= cant, use_container_width=True):
                     if n_comp:
                         st.session_state.seleccionados.append(num)
                         st.rerun()
                     else:
-                        st.warning("Escribe el nombre primero")
+                        st.warning("Escribe el nombre")
         else:
-            st.button("❌", key=f"b_{num}", disabled=True, help=f"Vendido por: {info.get('vendedor', 'N/A')}")
+            # Botón vendido (X)
+            st.button("❌", key=f"b_{num}", disabled=True, use_container_width=True, help=f"Vendido por: {info.get('vendedor', 'N/A')}")
