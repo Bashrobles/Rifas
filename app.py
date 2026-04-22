@@ -208,66 +208,77 @@ if cl.button("🗑️ Limpiar"):
 
 st.write(f"Seleccionados: **{', '.join(st.session_state.seleccionados)}**")
 
-# --- 7. CUADRÍCULA FLUIDA (SE ACOMODA SOLA CON TAMAÑO MÍNIMO FIJO) ---
+# --- 7. CUADRÍCULA DE BOLETOS (VERSIÓN DEFINITIVA Y LIGERA) ---
 st.divider()
 
-# Inyectamos el CSS mágico para lograr el diseño fluido y el tamaño de los boletos.
-# Jugaremos con el valor de flex y min-width para el tamaño.
+# 1. Estilos para los boletos
 st.markdown("""
     <style>
-    /* 1. Preparamos el contenedor principal para que sea flexible y use todo el ancho */
-    div[data-testid="stHorizontalBlock"] {
-        display: flex !important;
-        flex-wrap: wrap !important;
-        justify-content: flex-start !important; /* Alinea los boletos a la izquierda */
-        gap: 5px !important; /* Espacio entre boletos */
+    .contenedor-rifa {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
     }
-    
-    /* 2. Definimos el tamaño fijo y cómodo de cada cuadro de boleto */
-    /* Este es el bloque que hace que no se apreten */
-    [data-testid="column"] {
-        flex: 0 1 80px !important; /* Un poco más grande para comodidad, unos 80px de ancho */
-        min-width: 80px !important;
-        max-width: 80px !important; /* Mantiene el ancho constante */
-        margin-bottom: 5px !important; /* Espacio debajo de cada fila */
-        padding: 0 !important; /* Evita que Streamlit encime paddings */
+    .boleto-link {
+        text-decoration: none;
     }
-
-    /* 3. Estilo para el botón dentro del cuadro para que llene todo el espacio */
-    div.stButton > button {
-        width: 100% !important;
-        height: 60px !important; /* Lo hacemos un poquito más alto para que sea fácil de tocar */
-        padding: 5px 0px !important;
-        font-size: 16px !important; /* Aumentamos el tamaño de la letra para mayor visibilidad */
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
+    .boleto-btn {
+        width: 70px;
+        height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        border: 1px solid #444;
+        font-weight: bold;
+        cursor: pointer;
+        transition: 0.3s;
+        background-color: #0e1117;
+        color: white;
     }
+    .boleto-btn:hover {
+        border-color: #ff4b4b;
+        transform: scale(1.05);
+    }
+    .disponible { background-color: #1e2329; }
+    .seleccionado { background-color: #ffd700; color: black; border-color: #ffd700; }
+    .vendido { background-color: #333; color: #777; cursor: not-allowed; border: none; }
     </style>
     """, unsafe_allow_html=True)
 
+# 2. Render de boletos con botones nativos de Streamlit para que la lógica siga funcionando
+# Pero usaremos un contenedor para que fluyan
 boletos_lista = sorted(datos_boletos.items())
 
-# El truco para que el CSS de arriba funcione: 
-# NO usamos bucles que dividan en 10. Creamos tantas columnas como boletos existan.
-# El CSS se encargará de "romper" la línea cuando ya no quepan más a lo ancho.
-cols = st.columns(len(boletos_lista))
+# Usamos un contenedor de Streamlit para meter los botones
+# IMPORTANTE: No usamos columns() aquí, solo un loop normal
+with st.container():
+    # Este estilo de 'flex' hará que se acomoden solos
+    st.write('<div class="contenedor-rifa">', unsafe_allow_html=True)
+    
+    # Para que Streamlit no se pierda, usaremos un loop normal pero con botones de ancho fijo
+    # El truco es 'use_container_width=False' y meterlos en un bloque CSS
+    cols = st.columns([1]*12 if not st.sidebar.state == "expanded" else [1]*8) # Ajuste visual básico
 
-for i, (num, info) in enumerate(boletos_lista):
-    # Usamos cols[i] para poner un boleto por columna creada
-    with cols[i]:
-        if info['estado'] == 'disponible':
-            if num in st.session_state.seleccionados:
-                if st.button(f"🟡{num}", key=f"n_{num}"):
-                    st.session_state.seleccionados.remove(num)
-                    st.rerun()
-            else:
-                des = len(st.session_state.seleccionados) >= cant
-                if st.button(num, key=f"n_{num}", disabled=des):
-                    if n_comp:
-                        st.session_state.seleccionados.append(num)
+    # MEJOR AÚN: Vamos a usar el diseño nativo pero con un ancho fijo de columna pequeña
+    # Esto evita el error de la imagen anterior
+    columnas_fluidas = st.columns(10) # Forzamos 10 en PC, en Celular Streamlit las apilará
+    
+    for i, (num, info) in enumerate(boletos_lista):
+        with columnas_fluidas[i % 10]:
+            if info['estado'] == 'disponible':
+                if num in st.session_state.seleccionados:
+                    if st.button(f"🟡{num}", key=f"n_{num}", use_container_width=True):
+                        st.session_state.seleccionados.remove(num)
                         st.rerun()
-                    else:
-                        st.warning("Nombre")
-        else:
-            st.button("❌", key=f"n_{num}", disabled=True)
+                else:
+                    des = len(st.session_state.seleccionados) >= cant
+                    if st.button(num, key=f"n_{num}", disabled=des, use_container_width=True):
+                        if cliente:
+                            st.session_state.seleccionados.append(num)
+                            st.rerun()
+                        else:
+                            st.warning("Nombre")
+            else:
+                st.button("❌", key=f"n_{num}", disabled=True, use_container_width=True)
