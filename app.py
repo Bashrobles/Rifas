@@ -106,7 +106,8 @@ with st.sidebar:
     st.header("⚙️ Admin")
     if st.toggle("Modo Admin"):
         password = st.text_input("Clave:", type="password")
-        if password == "1234":
+        correct_password = st.secrets.get("ADMIN_PASSWORD", "clave_temporal_99")
+        if password == correct_password:
             st.success("Acceso concedido")
             
             # Métricas
