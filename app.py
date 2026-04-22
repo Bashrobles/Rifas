@@ -17,22 +17,24 @@ st.set_page_config(
 if not firebase_admin._apps:
     try:
         if "firebase_json" in st.secrets:
-            # En la nube (Streamlit Cloud)
+            # En la nube
             cred_dict = json.loads(st.secrets["firebase_json"])
+            
+            # 🛠️ TRUCO: Reparar el formato de la llave privada si viene con errores de salto de línea
+            if "private_key" in cred_dict:
+                cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+            
             cred = credentials.Certificate(cred_dict)
         else:
             # Local
             cred = credentials.Certificate("credenciales.json")
         
         firebase_admin.initialize_app(cred, {
-            # 👇 ASEGÚRATE QUE ESTA URL SEA LA CORRECTA (debe empezar con https://)
             'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/' 
         })
-        st.success("Conexión con Firebase establecida.") # Esto te confirmará que entró
     except Exception as e:
         st.error(f"❌ Error crítico al conectar con Firebase: {e}")
-        st.stop() # 🛑 Esto evita que el código siga y lance el error que te salió
-
+        st.stop()
 boletos_ref = db.reference('boletos')
 config_ref = db.reference('configuracion')
 vendedores_ref = db.reference('vendedores')
