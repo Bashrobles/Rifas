@@ -177,26 +177,46 @@ with st.sidebar:
 st.title("🎟️ Sistema de Rifas - Apoyo Estudiantil")
 st.write(f"**Precio: ${PRECIO_BOLETO} MXN**")
 
+# Formulario de datos
 c1, c2, c3, c4 = st.columns(4)
 with c1: n_comp = st.text_input("👤 Cliente:")
 with c2: t_comp = st.text_input("📞 WhatsApp:")
 with c3: 
     v_nombres = {v['nombre']: k for k, v in vendedores_datos.items()}
     v_sel = st.selectbox("🧤 Vendedor:", ["Seleccionar..."] + list(v_nombres.keys()))
-with c4: c_vend_v = st.text_input("🔑 Clave:", type="password")
+with c4: c_vend_v = st.text_input("🔑 Tu Clave:", type="password")
 
 st.divider()
 
-# Cantidad
-cant = st.number_input("🎟️ ¿Cuántos boletos?", min_value=1, value=1)
+# --- NUEVA SECCIÓN: SELECCIÓN DE BOLETOS ---
+col_cant, col_manual = st.columns([2, 3])
 
-# Lógica Venta
-if len(st.session_state.seleccionados) == cant and n_comp and v_sel != "Seleccionar...":
-    vid = v_nombres[v_sel]
-    if c_vend_v == vendedores_datos[vid]['clave']:
-        confirmar_venta(n_comp, t_comp, st.session_state.seleccionados, vid, v_sel)
-    elif c_vend_v != "": st.error("Clave de vendedor incorrecta")
+with col_cant:
+    cant = st.number_input("🎟️ ¿Cuántos boletos?", min_value=1, value=1)
 
+with col_manual:
+    # Ingreso manual de número
+    boleto_manual = st.text_input("🔢 Ingresar número manualmente:", placeholder="Ej: 025")
+    if st.button("➕ Agregar Número"):
+        # Validamos que el número exista en nuestra base
+        if boleto_manual in datos_boletos:
+            info_m = datos_boletos[boleto_manual]
+            if info_m['estado'] == 'disponible':
+                if len(st.session_state.seleccionados) < cant:
+                    if boleto_manual not in st.session_state.seleccionados:
+                        st.session_state.seleccionados.append(boleto_manual)
+                        st.success(f"Número {boleto_manual} agregado")
+                        st.rerun()
+                    else:
+                        st.warning("Ese número ya está en tu lista")
+                else:
+                    st.error(f"Ya alcanzaste el límite de {cant} boletos")
+            else:
+                st.error("Ese número ya está vendido")
+        else:
+            st.error("El número no existe")
+
+# Botones de ayuda rápida
 ca, cl, _ = st.columns([2, 2, 6])
 if ca.button("🎲 Aleatorio"):
     libres = [n for n, v in datos_boletos.items() if v['estado'] == 'disponible']
@@ -206,58 +226,43 @@ if cl.button("🗑️ Limpiar"):
     st.session_state.seleccionados = []
     st.rerun()
 
-st.write(f"Seleccionados: **{', '.join(st.session_state.seleccionados)}**")
+st.write(f"Seleccionados: **{', '.join(sorted(st.session_state.seleccionados))}**")
 
-# --- 7. CUADRÍCULA DE BOLETOS (RESPONSIVA REAL) ---
+# Lógica de venta automática
+if len(st.session_state.seleccionados) == cant and n_comp and v_sel != "Seleccionar...":
+    vid = v_nombres[v_sel]
+    if c_vend_v == vendedores_datos[vid]['clave']:
+        confirmar_venta(n_comp, t_comp, st.session_state.seleccionados, vid, v_sel)
+    elif c_vend_v != "":
+        st.error("🔑 Clave de vendedor incorrecta.")
+
+# --- 7. CUADRÍCULA DE BOLETOS (VERSIÓN ESTABLE 10 COLS) ---
 st.divider()
-
-# Inyectamos CSS para forzar una cuadrícula que NO se apile en celular
-st.markdown("""
-    <style>
-    /* Buscamos el contenedor donde Streamlit guarda las columnas */
-    [data-testid="stHorizontalBlock"] {
-        display: grid !important;
-        grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)) !important;
-        gap: 5px !important;
-    }
-    /* Quitamos las restricciones de ancho de las columnas originales */
-    [data-testid="column"] {
-        width: 100% !important;
-        min-width: 0px !important;
-        flex: none !important;
-    }
-    /* Estilo de los botones para que se vean como cuadros */
-    div.stButton > button {
-        width: 100% !important;
-        height: 50px !important;
-        padding: 0px !important;
-        font-size: 14px !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+# CSS mínimo para que los botones llenen su columna
+st.markdown("<style>div.stButton > button {width:100% !important;}</style>", unsafe_allow_html=True)
 
 boletos_lista = sorted(datos_boletos.items())
+cols_n = 10
 
-# El truco: No usamos un loop de filas de 10.
-# Creamos una sola fila de columnas "infinitas" y el CSS Grid de arriba
-# se encarga de acomodarlas: si caben 10, pone 10; si caben 4, pone 4.
-columnas = st.columns(len(boletos_lista))
-
-for i, (num, info) in enumerate(boletos_lista):
-    with columnas[i]:
-        if info['estado'] == 'disponible':
-            if num in st.session_state.seleccionados:
-                if st.button(f"🟡{num}", key=f"n_{num}"):
-                    st.session_state.seleccionados.remove(num)
-                    st.rerun()
-            else:
-                des = len(st.session_state.seleccionados) >= cant
-                if st.button(num, key=f"n_{num}", disabled=des):
-                    if n_comp:
-                        st.session_state.seleccionados.append(num)
+for i in range(0, len(boletos_lista), cols_n):
+    fila = boletos_lista[i : i + cols_n]
+    columnas = st.columns(cols_n)
+    
+    for idx, (num, info) in enumerate(fila):
+        with columnas[idx]:
+            if info['estado'] == 'disponible':
+                # Si el número está seleccionado (ya sea por clic o manual) sale amarillo
+                if num in st.session_state.seleccionados:
+                    if st.button(f"🟡{num}", key=f"b_{num}"):
+                        st.session_state.seleccionados.remove(num)
                         st.rerun()
-                    else:
-                        st.warning("Escribe el nombre primero")
-        else:
-            # Botón de ocupado
-            st.button("❌", key=f"n_{num}", disabled=True)
+                else:
+                    des = len(st.session_state.seleccionados) >= cant
+                    if st.button(num, key=f"b_{num}", disabled=des):
+                        if n_comp:
+                            st.session_state.seleccionados.append(num)
+                            st.rerun()
+                        else:
+                            st.warning("Escribe el nombre primero")
+            else:
+                st.button("❌", key=f"b_{num}", disabled=True)
