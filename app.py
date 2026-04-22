@@ -190,7 +190,7 @@ with st.sidebar:
 # --- 7. INTERFAZ PÚBLICA / VENDEDOR ---
 st.title("🎟️ Rifa Apoyo Estudiantil")
 
-# Inputs principales
+# Inputs principales (Sin CSS que los rompa)
 c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 1.2])
 with c1: cliente = st.text_input("👤 Cliente:")
 with c2: tel = st.text_input("📞 WhatsApp:")
@@ -203,65 +203,82 @@ st.divider()
 
 # Cantidad y Ayuda
 cant = st.number_input("Boletos a comprar:", min_value=1, value=1)
-if len(st.session_state.seleccionados) == cant and cliente and v_sel != "Seleccionar...":
-    vid = v_nombres[v_sel]
-    if v_pass == vendedores_datos[vid]['clave']:
-        confirmar_venta(cliente, tel, st.session_state.seleccionados, vid, v_sel)
 
 ca, cl, _ = st.columns([2, 2, 6])
 if ca.button("🎲 Aleatorio"):
     libres = [n for n, v in datos_boletos.items() if v['estado'] == 'disponible']
-    st.session_state.seleccionados = random.sample(libres, cant)
+    st.session_state.seleccionados = random.sample(libres, min(cant, len(libres)))
     st.rerun()
 if cl.button("🗑️ Limpiar"):
     st.session_state.seleccionados = []
     st.rerun()
 
-st.write(f"Seleccionados: {', '.join(st.session_state.seleccionados)}")
+st.write(f"Seleccionados: **{', '.join(sorted(st.session_state.seleccionados))}**")
 
-# --- 8. CUADRÍCULA DE BOLETOS (VERSIÓN GRID ÚNICO) ---
+# --- 8. CUADRÍCULA DE BOLETOS (AISLADA Y RESPONSIVA) ---
 st.divider()
+
+# Inyectamos CSS que SOLO afecta al bloque de boletos que viene a continuación
+st.markdown("""
+    <style>
+    /* Estilo para los botones de números */
+    .st-key-grid-container div.stButton > button {
+        width: 100% !important;
+        padding: 4px 0px !important;
+        font-size: 14px !important;
+    }
+
+    /* Contenedor específico para la cuadrícula */
+    div[data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"].css-grid-boletos {
+        display: grid !important;
+        gap: 5px !important;
+    }
+
+    /* Celular: 5 columnas */
+    @media (max-width: 768px) {
+        div.css-grid-boletos {
+            grid-template-columns: repeat(5, 1fr) !important;
+        }
+    }
+    /* PC: 10 columnas */
+    @media (min-width: 769px) {
+        div.css-grid-boletos {
+            grid-template-columns: repeat(10, 1fr) !important;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Lógica de venta automática
+if len(st.session_state.seleccionados) == cant and cliente and v_sel != "Seleccionar...":
+    vid = v_nombres[v_sel]
+    if v_pass == vendedores_datos[vid]['clave']:
+        confirmar_venta(cliente, tel, st.session_state.seleccionados, vid, v_sel)
+
+# Render de la cuadrícula
 boletos_lista = sorted(datos_boletos.items())
 
-# Creamos un solo bloque de columnas (Streamlit repartirá los botones en el grid de CSS)
-# Ponemos 10 columnas, pero el CSS 'grid-template-columns' es el que manda al final
-columnas = st.columns(10)
-
-for i, (num, info) in enumerate(boletos_lista):
-    # Usamos el operador módulo para ciclar entre las columnas creadas
-    with columnas[i % 10]:
-        if info['estado'] == 'disponible':
-            if num in st.session_state.seleccionados:
-                if st.button(f"🟡{num}", key=f"btn_{num}"):
-                    st.session_state.seleccionados.remove(num)
-                    st.rerun()
-            else:
-                des = len(st.session_state.seleccionados) >= cant
-                if st.button(num, key=f"btn_{num}", disabled=des):
-                    if cliente:
-                        st.session_state.seleccionados.append(num)
+# Creamos un contenedor "falso" para aplicar el grid
+# Nota: Usamos un solo st.columns grande y el CSS se encarga del resto
+with st.container():
+    # Esta clase es la que el CSS busca para no romper lo de arriba
+    st.markdown('<div class="css-grid-boletos">', unsafe_allow_html=True)
+    cols = st.columns(10)
+    for i, (num, info) in enumerate(boletos_lista):
+        with cols[i % 10]:
+            if info['estado'] == 'disponible':
+                if num in st.session_state.seleccionados:
+                    if st.button(f"🟡{num}", key=f"btn_{num}"):
+                        st.session_state.seleccionados.remove(num)
                         st.rerun()
-                    else:
-                        st.warning("Nombre")
-        else:
-            st.button("❌", key=f"btn_{num}", disabled=True)
-
-# Usamos 10 columnas en el código, el CSS de arriba las ajustará a 5 en móvil
-cols = st.columns(10)
-for i, (num, info) in enumerate(boletos_lista):
-    with cols[i % 10]:
-        if info['estado'] == 'disponible':
-            if num in st.session_state.seleccionados:
-                if st.button(f"🟡{num}", key=f"btn_{num}"):
-                    st.session_state.seleccionados.remove(num)
-                    st.rerun()
+                else:
+                    des = len(st.session_state.seleccionados) >= cant
+                    if st.button(num, key=f"btn_{num}", disabled=des):
+                        if cliente:
+                            st.session_state.seleccionados.append(num)
+                            st.rerun()
+                        else:
+                            st.warning("Escribe el nombre")
             else:
-                des = len(st.session_state.seleccionados) >= cant
-                if st.button(num, key=f"btn_{num}", disabled=des):
-                    if cliente:
-                        st.session_state.seleccionados.append(num)
-                        st.rerun()
-                    else:
-                        st.warning("Nombre")
-        else:
-            st.button("❌", key=f"btn_{num}", disabled=True)
+                st.button("❌", key=f"btn_{num}", disabled=True)
+    st.markdown('</div>', unsafe_allow_html=True)
