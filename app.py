@@ -208,77 +208,56 @@ if cl.button("🗑️ Limpiar"):
 
 st.write(f"Seleccionados: **{', '.join(st.session_state.seleccionados)}**")
 
-# --- 7. CUADRÍCULA DE BOLETOS (VERSIÓN DEFINITIVA Y LIGERA) ---
+# --- 7. CUADRÍCULA DE BOLETOS (RESPONSIVA REAL) ---
 st.divider()
 
-# 1. Estilos para los boletos
+# Inyectamos CSS para forzar una cuadrícula que NO se apile en celular
 st.markdown("""
     <style>
-    .contenedor-rifa {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        justify-content: center;
+    /* Buscamos el contenedor donde Streamlit guarda las columnas */
+    [data-testid="stHorizontalBlock"] {
+        display: grid !important;
+        grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)) !important;
+        gap: 5px !important;
     }
-    .boleto-link {
-        text-decoration: none;
+    /* Quitamos las restricciones de ancho de las columnas originales */
+    [data-testid="column"] {
+        width: 100% !important;
+        min-width: 0px !important;
+        flex: none !important;
     }
-    .boleto-btn {
-        width: 70px;
-        height: 50px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 8px;
-        border: 1px solid #444;
-        font-weight: bold;
-        cursor: pointer;
-        transition: 0.3s;
-        background-color: #0e1117;
-        color: white;
+    /* Estilo de los botones para que se vean como cuadros */
+    div.stButton > button {
+        width: 100% !important;
+        height: 50px !important;
+        padding: 0px !important;
+        font-size: 14px !important;
     }
-    .boleto-btn:hover {
-        border-color: #ff4b4b;
-        transform: scale(1.05);
-    }
-    .disponible { background-color: #1e2329; }
-    .seleccionado { background-color: #ffd700; color: black; border-color: #ffd700; }
-    .vendido { background-color: #333; color: #777; cursor: not-allowed; border: none; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Render de boletos con botones nativos de Streamlit para que la lógica siga funcionando
-# Pero usaremos un contenedor para que fluyan
 boletos_lista = sorted(datos_boletos.items())
 
-# Usamos un contenedor de Streamlit para meter los botones
-# IMPORTANTE: No usamos columns() aquí, solo un loop normal
-with st.container():
-    # Este estilo de 'flex' hará que se acomoden solos
-    st.write('<div class="contenedor-rifa">', unsafe_allow_html=True)
-    
-    # Para que Streamlit no se pierda, usaremos un loop normal pero con botones de ancho fijo
-    # El truco es 'use_container_width=False' y meterlos en un bloque CSS
-    cols = st.columns([1]*12 if not st.sidebar.state == "expanded" else [1]*8) # Ajuste visual básico
+# El truco: No usamos un loop de filas de 10.
+# Creamos una sola fila de columnas "infinitas" y el CSS Grid de arriba
+# se encarga de acomodarlas: si caben 10, pone 10; si caben 4, pone 4.
+columnas = st.columns(len(boletos_lista))
 
-    # MEJOR AÚN: Vamos a usar el diseño nativo pero con un ancho fijo de columna pequeña
-    # Esto evita el error de la imagen anterior
-    columnas_fluidas = st.columns(10) # Forzamos 10 en PC, en Celular Streamlit las apilará
-    
-    for i, (num, info) in enumerate(boletos_lista):
-        with columnas_fluidas[i % 10]:
-            if info['estado'] == 'disponible':
-                if num in st.session_state.seleccionados:
-                    if st.button(f"🟡{num}", key=f"n_{num}", use_container_width=True):
-                        st.session_state.seleccionados.remove(num)
-                        st.rerun()
-                else:
-                    des = len(st.session_state.seleccionados) >= cant
-                    if st.button(num, key=f"n_{num}", disabled=des, use_container_width=True):
-                        if cliente:
-                            st.session_state.seleccionados.append(num)
-                            st.rerun()
-                        else:
-                            st.warning("Nombre")
+for i, (num, info) in enumerate(boletos_lista):
+    with columnas[i]:
+        if info['estado'] == 'disponible':
+            if num in st.session_state.seleccionados:
+                if st.button(f"🟡{num}", key=f"n_{num}"):
+                    st.session_state.seleccionados.remove(num)
+                    st.rerun()
             else:
-                st.button("❌", key=f"n_{num}", disabled=True, use_container_width=True)
+                des = len(st.session_state.seleccionados) >= cant
+                if st.button(num, key=f"n_{num}", disabled=des):
+                    if n_comp:
+                        st.session_state.seleccionados.append(num)
+                        st.rerun()
+                    else:
+                        st.warning("Escribe el nombre primero")
+        else:
+            # Botón de ocupado
+            st.button("❌", key=f"n_{num}", disabled=True)
