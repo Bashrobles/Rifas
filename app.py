@@ -125,6 +125,13 @@ with st.sidebar:
                     st.rerun()
             
             if vendedores_datos:
+                with st.expander("🗑️ Eliminar Vendedor"):
+                    v_opc_del = {v['nombre']: k for k, v in vendedores_datos.items()}
+                    v_target = st.selectbox("Selecciona vendedor a eliminar:", list(v_opc_del.keys()))
+                    if st.button("Confirmar Eliminación", type="primary"):
+                        vendedores_ref.child(v_opc_del[v_target]).delete()
+                        st.rerun()
+
                 st.write("**Corte de Caja:**")
                 for vid, vinfo in vendedores_datos.items():
                     st.write(f"- {vinfo['nombre']}: {vinfo.get('ventas', 0)}")
@@ -134,17 +141,28 @@ with st.sidebar:
 
             # --- EXPORTAR Y PRECIO ---
             st.subheader("📊 Extras")
-            if st.button("📧 Editar Plantilla"):
-                st.info("Usa Firebase para editar el template por ahora.")
             
-            # CSV
+            # CSV de Ventas
             csv_str = "Nombre,Telefono,Boletos\n"
-            for (nom, t), nums in agrupados.items() if pendientes else {}:
-                csv_str += f"{nom},{t},{'-'.join(nums)}\n"
-            st.download_button("📥 Descargar CSV", csv_str, "rifa.csv")
+            for (nom, t), nums in agrupados.items() if (pendientes or ocupados_list) else {}:
+                # Re-agrupamos todos los vendidos para el CSV completo
+                pass 
+            # Lógica simple para CSV completo:
+            todos_vendidos = {}
+            for n, i in datos_boletos.items():
+                if i['estado'] == 'ocupado':
+                    k = (i['dueño'], i['telefono'])
+                    if k not in todos_vendidos: todos_vendidos[k] = []
+                    todos_vendidos[k].append(n)
+            
+            csv_final = "Nombre,Telefono,Boletos\n"
+            for (n, t), b_list in todos_vendidos.items():
+                csv_final += f"{n},{t},{' '.join(b_list)}\n"
+                
+            st.download_button("📥 Descargar CSV de Ventas", csv_final, "ventas_rifa.csv")
 
             # Precio
-            np = st.number_input("Nuevo Precio:", value=float(PRECIO_BOLETO))
+            np = st.number_input("Nuevo Precio por boleto:", value=float(PRECIO_BOLETO))
             if st.button("Guardar Precio"):
                 config_ref.update({"precio_boleto": np})
                 st.rerun()
