@@ -190,8 +190,25 @@ with st.sidebar:
 # --- 7. INTERFAZ PÚBLICA / VENDEDOR ---
 st.title("🎟️ Rifa Apoyo Estudiantil")
 
-# Inputs principales (Sin CSS que los rompa)
-c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 1.2])
+# CSS Mínimo: Solo para que los botones de los números sean cuadrados y compactos
+# Sin tocar el layout de las columnas principales
+st.markdown("""
+    <style>
+    /* Solo afectamos a los botones que tienen números (los de la cuadrícula) */
+    div.stButton > button {
+        width: 100% !important;
+        padding: 5px 0px !important;
+        font-size: 14px !important;
+    }
+    /* Estilo para los inputs de arriba para que no se corten */
+    .stTextInput > label, .stSelectbox > label {
+        white-space: nowrap !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# 1. Inputs principales: Usamos columnas estándar de Streamlit
+c1, c2, c3, c4 = st.columns(4)
 with c1: cliente = st.text_input("👤 Cliente:")
 with c2: tel = st.text_input("📞 WhatsApp:")
 with c3: 
@@ -201,32 +218,28 @@ with c4: v_pass = st.text_input("🔑 Clave:", type="password")
 
 st.divider()
 
-# Cantidad y Ayuda
+# 2. Cantidad y Ayuda
 cant = st.number_input("Boletos a comprar:", min_value=1, value=1)
 
 ca, cl, _ = st.columns([2, 2, 6])
-if ca.button("🎲 Aleatorio"):
+with ca:
+    btn_aleatorio = st.button("🎲 Aleatorio")
+with cl:
+    btn_limpiar = st.button("🗑️ Limpiar")
+
+if btn_aleatorio:
     libres = [n for n, v in datos_boletos.items() if v['estado'] == 'disponible']
     st.session_state.seleccionados = random.sample(libres, min(cant, len(libres)))
     st.rerun()
-if cl.button("🗑️ Limpiar"):
+
+if btn_limpiar:
     st.session_state.seleccionados = []
     st.rerun()
 
 st.write(f"Seleccionados: **{', '.join(sorted(st.session_state.seleccionados))}**")
 
-# --- 8. CUADRÍCULA DE BOLETOS (VERSIÓN RESPONSIVA LIMPIA) ---
+# --- 8. CUADRÍCULA DE BOLETOS (LÓGICA ESTABLE) ---
 st.divider()
-
-# CSS mínimo: solo para que los botones llenen su espacio y no se vean "flacos"
-st.markdown("""
-    <style>
-    div.stButton > button {
-        width: 100% !important;
-        padding: 5px 0px !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
 
 # Lógica de venta automática
 if len(st.session_state.seleccionados) == cant and cliente and v_sel != "Seleccionar...":
@@ -234,17 +247,14 @@ if len(st.session_state.seleccionados) == cant and cliente and v_sel != "Selecci
     if v_pass == vendedores_datos[vid]['clave']:
         confirmar_venta(cliente, tel, st.session_state.seleccionados, vid, v_sel)
 
-# --- DETERMINAR COLUMNAS SEGÚN DISPOSITIVO ---
-# Truco pro: Streamlit no sabe en qué dispositivo estás, 
-# pero podemos usar 10 columnas y el 'gap' hará que en móvil se vea aceptable
-# o simplemente usar una cuadrícula balanceada.
-cols_pc = 10
+# Render de la cuadrícula: 10 columnas en PC, Streamlit bajará a 1 en Celular por estabilidad
 boletos_lista = sorted(datos_boletos.items())
+cols_n = 10
 
-# Dibujamos las filas de 10 columnas
-for i in range(0, len(boletos_lista), cols_pc):
-    fila = boletos_lista[i : i + cols_pc]
-    columnas = st.columns(cols_pc) # Crea 10 columnas para esta fila
+# Dibujamos por filas para asegurar alineación perfecta en PC
+for i in range(0, len(boletos_lista), cols_n):
+    fila = boletos_lista[i : i + cols_n]
+    columnas = st.columns(cols_n)
     
     for idx, (num, info) in enumerate(fila):
         with columnas[idx]:
