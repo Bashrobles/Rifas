@@ -17,17 +17,19 @@ st.set_page_config(
 
 # --- 1. CONEXIÓN A FIREBASE ---
 # --- 1. CONEXIÓN A FIREBASE ---
+# --- 1. CONEXIÓN A FIREBASE ---
 if not firebase_admin._apps:
     try:
         if "firebase_json" in st.secrets:
-            # Obtenemos la info como diccionario
+            # Creamos el diccionario a partir de los secrets de Streamlit
+            # Usamos dict() para asegurarnos de que sea un objeto compatible
             cred_info = dict(st.secrets["firebase_json"])
             
-            # 🛠️ TRUCO MAESTRO: Limpiar la llave de cualquier error de pegado
-            # Reemplaza barras dobles por simples y asegura que \n sea un salto real
-            raw_key = cred_info["private_key"]
-            clean_key = raw_key.replace("\\n", "\n")
-            cred_info["private_key"] = clean_key
+            # Forzamos a que la llave privada mantenga sus saltos de línea
+            # y eliminamos cualquier residuo de caracteres de escape fallidos
+            if "private_key" in cred_info:
+                # Si por alguna razón la llave trae el texto literal "\n", lo convertimos
+                cred_info["private_key"] = cred_info["private_key"].replace("\\n", "\n")
             
             cred = credentials.Certificate(cred_info)
         else:
