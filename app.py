@@ -15,14 +15,17 @@ st.set_page_config(
 
 # --- 1. CONEXIÓN A FIREBASE ---
 
+# --- 1. CONEXIÓN A FIREBASE ---
 if not firebase_admin._apps:
     try:
         if "firebase_json" in st.secrets:
-            # Directo desde el diccionario de Secrets
+            # Extraemos la info del diccionario de Secrets
             cred_info = dict(st.secrets["firebase_json"])
+            # Limpieza profunda de la llave para evitar errores de ASN.1 / Padding
+            cred_info["private_key"] = cred_info["private_key"].replace("\\n", "\n")
             cred = credentials.Certificate(cred_info)
         else:
-            # Local
+            # Para correrlo localmente
             cred = credentials.Certificate("credenciales.json")
         
         firebase_admin.initialize_app(cred, {
