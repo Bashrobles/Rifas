@@ -180,7 +180,7 @@ with col_m:
 
 # Ayuda Aleatorio (Completa lo que falta)
 ca, cl, _ = st.columns([2, 2, 6])
-if ca.button("🎲 Completar"):
+if ca.button("🎲 Aleatorio"):
     faltan = cant - len(st.session_state.seleccionados)
     if faltan > 0:
         libres = [n for n, v in datos_boletos.items() if v['estado'] == 'disponible' and n not in st.session_state.seleccionados]
