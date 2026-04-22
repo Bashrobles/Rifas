@@ -99,11 +99,18 @@ with st.sidebar:
                             if len(t) == 10: t = "52" + t
                             msj = MENSAJE_TEMPLATE.replace("{{nombre}}", comp).replace("{{boletos}}", ", ".join(lista))
                             st.link_button("📲 WhatsApp", f"https://wa.me/{t}?text={urllib.parse.quote(msj)}", use_container_width=True)
+                        
                         c_env, c_can = st.columns(2)
                         if c_env.button("✅ Enviado", key=f"env_{lista[0]}"):
-                            for b in lista: boletos_ref.child(b).update({"notificado": True}); st.rerun()
-                        if c_can.button("🚫 Cancelar", key=f"can_{lista[0]}", type="primary"):
-                            for b in lista: boletos_ref.child(b).update({"estado":"disponible","dueño":"","telefono":"","notificado":False}); st.rerun()
+                            # Solución del bucle: rerun fuera del for
+                            for b in lista: 
+                                boletos_ref.child(b).update({"notificado": True})
+                            st.rerun()
+                        if c_can.button("🚫 Cancelar Lote", key=f"can_{lista[0]}", type="primary"):
+                            # Solución del bucle: rerun fuera del for
+                            for b in lista: 
+                                boletos_ref.child(b).update({"estado":"disponible","dueño":"","telefono":"","notificado":False,"vendedor":""})
+                            st.rerun()
 
             # BUSCADOR POR BOLETO (Muestra Nombre y Teléfono)
             st.subheader("🔍 Buscar")
@@ -127,6 +134,19 @@ with st.sidebar:
                     target = st.selectbox("Eliminar vendedor:", list(v_del_map.keys()))
                     if st.button("🗑️ Eliminar Definitivamente", type="primary"):
                         vendedores_ref.child(v_del_map[target]).delete(); st.rerun()
+
+            # CORTE DE CAJA POR VENDEDOR (NUEVO)
+            st.subheader("💰 Corte de Caja")
+            if vendedores_datos:
+                for vid, vinfo in vendedores_datos.items():
+                    v_ventas = vinfo.get('ventas', 0)
+                    col_n, col_r = st.columns([3, 2])
+                    with col_n:
+                        st.write(f"**{vinfo['nombre']}**: {v_ventas} boletos (${v_ventas * PRECIO_BOLETO})")
+                    with col_r:
+                        if st.button("🔄 Reset", key=f"rst_{vid}"):
+                            vendedores_ref.child(vid).update({'ventas': 0})
+                            st.rerun()
 
             # EXTRAS
             st.subheader("📊 Reportes y Config")
