@@ -8,7 +8,7 @@ import tempfile
 import os
 
 # --- 1. CONFIGURACIÓN ---
-st.set_page_config(page_title="Rifa CUCEI", page_icon="🎟️", layout="wide")
+st.set_page_config(page_title="Rifa CUCEI Pro", page_icon="🎟️", layout="wide")
 
 # --- 2. CONEXIÓN FIREBASE ---
 if not firebase_admin._apps:
@@ -34,7 +34,7 @@ boletos_ref = db.reference('boletos')
 config_ref = db.reference('configuracion')
 vendedores_ref = db.reference('vendedores')
 
-# --- 3. DATOS ---
+# --- 3. CARGA DE DATOS ---
 datos_crudos = boletos_ref.get()
 config_datos = config_ref.get() or {}
 vendedores_datos = vendedores_ref.get() or {}
@@ -53,12 +53,12 @@ else:
     datos_boletos = datos_crudos or {}
 
 # --- 4. DIÁLOGOS ---
-@st.dialog("🛒 Confirmar Registro")
+@st.dialog("🛒 Confirmar Venta")
 def confirmar_venta(nombre, telefono, boletos, v_id, v_nombre):
-    total_pago = len(boletos) * PRECIO_BOLETO
-    st.write(f"**Cliente:** {nombre} | **Total:** ${total_pago}")
-    st.write(f"**Números:** {', '.join(sorted(boletos))}")
-    if st.button("✅ Registrar Venta", use_container_width=True):
+    st.write(f"**Cliente:** {nombre}")
+    st.write(f"**Boletos:** {', '.join(sorted(boletos))}")
+    st.write(f"**Total a cobrar:** ${len(boletos)*PRECIO_BOLETO}")
+    if st.button("✅ Confirmar Pago y Registrar", use_container_width=True):
         for b in boletos:
             boletos_ref.child(b).update({
                 "estado":"ocupado", "dueño":nombre, "telefono":telefono, 
@@ -69,68 +69,113 @@ def confirmar_venta(nombre, telefono, boletos, v_id, v_nombre):
         st.session_state.seleccionados = []
         st.rerun()
 
-# --- 5. SIDEBAR (EL MENÚ CHIDO) ---
+# --- 5. PANEL ADMINISTRADOR COMPLETO ---
 with st.sidebar:
-    st.header("⚙️ Admin")
-    if st.toggle("Acceso Admin"):
-        pwd = st.text_input("Clave:", type="password")
+    st.header("⚙️ Panel de Control")
+    if st.toggle("Desbloquear Modo Admin"):
+        pwd = st.text_input("Clave Maestra:", type="password")
         if pwd == st.secrets.get("ADMIN_PASSWORD", "1234"):
-            # Métricas
-            ocupados = [k for k, v in datos_boletos.items() if v['estado'] == 'ocupado']
-            st.metric("Ventas Totales", f"{len(ocupados)}/{len(datos_boletos)}")
-            st.metric("Recaudado", f"${len(ocupados)*PRECIO_BOLETO}")
+            st.success("Acceso Autorizado")
             
-            # Buscador (Lo que pediste: Nombre y Teléfono)
+            # --- PROGRESO ---
+            ocupados_list = [k for k, v in datos_boletos.items() if v['estado'] == 'ocupado']
+            total_n = len(datos_boletos)
+            progreso = len(ocupados_list)/total_n if total_n > 0 else 0
+            st.subheader("📈 Avance")
+            st.progress(progreso)
+            st.write(f"Ventas: {len(ocupados_list)}/{total_n} (${len(ocupados_list)*PRECIO_BOLETO})")
+            
+            # --- WHATSAPP PENDIENTES ---
+            st.subheader("📩 Mensajes Pendientes")
+            pendientes = {k: v for k, v in datos_boletos.items() if v['estado'] == 'ocupado' and not v.get('notificado')}
+            if pendientes:
+                agrupados = {}
+                for n, i in pendientes.items():
+                    key = (i['dueño'], i['telefono'])
+                    if key not in agrupados: agrupados[key] = []
+                    agrupados[key].append(n)
+                for (comp, tel_cli), lista in agrupados.items():
+                    with st.expander(f"👤 {comp}"):
+                        if tel_cli:
+                            t = "".join(filter(str.isdigit, tel_cli))
+                            if len(t) == 10: t = "52" + t
+                            msj = MENSAJE_TEMPLATE.replace("{{nombre}}", comp).replace("{{boletos}}", ", ".join(lista))
+                            st.link_button("Mandar WhatsApp", f"https://wa.me/{t}?text={urllib.parse.quote(msj)}")
+                        if st.button("Marcar como Notificado", key=f"not_{lista[0]}"):
+                            for b in lista: boletos_ref.child(b).update({"notificado": True})
+                            st.rerun()
+            
+            # --- BUSCADOR POR BOLETO ---
             st.subheader("🔍 Buscar Comprador")
-            if ocupados:
-                b_ver = st.selectbox("Elegir boleto:", sorted(ocupados, key=int))
-                info = datos_boletos[b_ver]
-                st.info(f"👤 **{info['dueño']}**\n\n📞 **{info['telefono']}**")
-                if st.button("🔓 Liberar Número"):
-                    boletos_ref.child(b_ver).update({"estado":"disponible","dueño":"","telefono":"","vendedor":""})
+            if ocupados_list:
+                b_sel_admin = st.selectbox("Elegir boleto vendido:", sorted(ocupados_list, key=int))
+                info_admin = datos_boletos[b_sel_admin]
+                st.info(f"👤 **{info_admin['dueño']}**\n\n📞 **{info_admin['telefono']}**")
+                if st.button("🔓 Liberar este número", type="primary"):
+                    boletos_ref.child(b_sel_admin).update({"estado":"disponible","dueño":"","telefono":"","vendedor":"","notificado":False})
                     st.rerun()
 
-            # CSV (Lo que pediste)
-            st.subheader("📊 Reportes")
-            csv_data = "Nombre,Telefono,Boletos\n"
-            contactos = {}
-            for n, i in datos_boletos.items():
-                if i['estado'] == 'ocupado':
-                    key = (i['dueño'], i['telefono'])
-                    if key not in contactos: contactos[key] = []
-                    contactos[key].append(n)
-            for (nom, tel), nums in contactos.items():
-                csv_data += f"{nom},{tel},{'-'.join(nums)}\n"
-            st.download_button("📥 Descargar CSV de Ventas", csv_data, "ventas_rifa.csv")
+            # --- GESTIÓN VENDEDORES ---
+            st.subheader("👥 Equipo")
+            with st.expander("Añadir Vendedor"):
+                nv = st.text_input("Nombre:")
+                cv = st.text_input("Clave:", type="password")
+                if st.button("Crear"):
+                    vendedores_ref.push({'nombre': nv, 'clave': cv, 'ventas': 0})
+                    st.rerun()
+            
+            if vendedores_datos:
+                st.write("**Corte de Caja:**")
+                for vid, vinfo in vendedores_datos.items():
+                    st.write(f"- {vinfo['nombre']}: {vinfo.get('ventas', 0)}")
+                if st.button("💰 Resetear Corte a Cero"):
+                    for vid in vendedores_datos: vendedores_ref.child(vid).update({'ventas': 0})
+                    st.rerun()
 
-            # Configuración de Precio
-            new_p = st.number_input("Precio por boleto:", value=float(PRECIO_BOLETO))
-            if st.button("Actualizar Precio"):
-                config_ref.update({"precio_boleto": new_p})
+            # --- EXPORTAR Y PRECIO ---
+            st.subheader("📊 Extras")
+            if st.button("📧 Editar Plantilla"):
+                st.info("Usa Firebase para editar el template por ahora.")
+            
+            # CSV
+            csv_str = "Nombre,Telefono,Boletos\n"
+            for (nom, t), nums in agrupados.items() if pendientes else {}:
+                csv_str += f"{nom},{t},{'-'.join(nums)}\n"
+            st.download_button("📥 Descargar CSV", csv_str, "rifa.csv")
+
+            # Precio
+            np = st.number_input("Nuevo Precio:", value=float(PRECIO_BOLETO))
+            if st.button("Guardar Precio"):
+                config_ref.update({"precio_boleto": np})
+                st.rerun()
+
+            if st.button("🚨 REINICIAR TODO", type="primary"):
+                boletos_ref.delete()
                 st.rerun()
 
 # --- 6. INTERFAZ VENDEDOR ---
-st.title("🎟️ Rifa Apoyo Estudiantil")
-st.write(f"**Precio por boleto: ${PRECIO_BOLETO} MXN**")
+st.title("🎟️ Sistema de Rifas - Apoyo Estudiantil")
+st.write(f"**Precio: ${PRECIO_BOLETO} MXN**")
 
 c1, c2, c3, c4 = st.columns(4)
-with c1: cliente = st.text_input("👤 Cliente:")
-with c2: tel = st.text_input("📞 WhatsApp:")
+with c1: n_comp = st.text_input("👤 Cliente:")
+with c2: t_comp = st.text_input("📞 WhatsApp:")
 with c3: 
     v_nombres = {v['nombre']: k for k, v in vendedores_datos.items()}
     v_sel = st.selectbox("🧤 Vendedor:", ["Seleccionar..."] + list(v_nombres.keys()))
-with c4: v_pass = st.text_input("🔑 Clave:", type="password")
+with c4: c_vend_v = st.text_input("🔑 Clave:", type="password")
 
 st.divider()
 
-# Input de Cantidad (Recuperado)
+# Cantidad
 cant = st.number_input("🎟️ ¿Cuántos boletos?", min_value=1, value=1)
 
-# Lógica de Venta
-if len(st.session_state.seleccionados) == cant and cliente and v_sel != "Seleccionar...":
+# Lógica Venta
+if len(st.session_state.seleccionados) == cant and n_comp and v_sel != "Seleccionar...":
     vid = v_nombres[v_sel]
-    if v_pass == vendedores_datos[vid]['clave']:
-        confirmar_venta(cliente, tel, st.session_state.seleccionados, vid, v_sel)
+    if c_vend_v == vendedores_datos[vid]['clave']:
+        confirmar_venta(n_comp, t_comp, st.session_state.seleccionados, vid, v_sel)
+    elif c_vend_v != "": st.error("Clave de vendedor incorrecta")
 
 ca, cl, _ = st.columns([2, 2, 6])
 if ca.button("🎲 Aleatorio"):
@@ -162,7 +207,7 @@ for i in range(0, len(boletos_lista), cols_n):
                 else:
                     des = len(st.session_state.seleccionados) >= cant
                     if st.button(num, key=f"n_{num}", disabled=des):
-                        if cliente:
+                        if n_comp:
                             st.session_state.seleccionados.append(num)
                             st.rerun()
                         else: st.warning("Nombre")
