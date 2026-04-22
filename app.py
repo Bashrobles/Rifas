@@ -190,86 +190,79 @@ with st.sidebar:
 # --- 7. INTERFAZ PÚBLICA / VENDEDOR ---
 st.title("🎟️ Rifa Apoyo Estudiantil")
 
-# CSS Mínimo: Solo para que los botones de los números sean cuadrados y compactos
-# Sin tocar el layout de las columnas principales
+# Inputs principales: Usamos el diseño original de 4 columnas
+c1, c2, c3, c4 = st.columns(4)
+with c1: n_comp = st.text_input("👤 Cliente:")
+with c2: t_comp = st.text_input("📞 WhatsApp:")
+with c3: 
+    v_opc = {v['nombre']: k for k, v in vendedores_datos.items()}
+    v_sel = st.selectbox("🧤 Vendedor:", ["Seleccionar..."] + list(v_opc.keys()))
+with c4: c_vend_v = st.text_input("🔑 Clave:", type="password")
+
+st.divider()
+
+# Proceso de Selección y Cantidad
+cant = st.number_input("🎟️ ¿Cuántos boletos?", min_value=1, max_value=len(datos_boletos), value=1)
+
+# Botones de ayuda (Aleatorio y Limpiar)
+col_a, col_l, _ = st.columns([2, 2, 6])
+if col_a.button("🎲 Aleatorio", use_container_width=True):
+    libres = [n for n, i in datos_boletos.items() if i['estado'] == 'disponible']
+    st.session_state.seleccionados = random.sample(libres, min(cant, len(libres)))
+    st.rerun()
+
+if col_l.button("🗑️ Limpiar", use_container_width=True):
+    st.session_state.seleccionados = []
+    st.rerun()
+
+if st.session_state.seleccionados:
+    st.info(f"Seleccionados: **{', '.join(sorted(st.session_state.seleccionados))}**")
+
+# Lógica de Venta (Se ejecuta si ya se alcanzó la cantidad)
+if len(st.session_state.seleccionados) == cant and n_comp and v_sel != "Seleccionar...":
+    v_id = v_opc[v_sel]
+    if c_vend_v == vendedores_datos[v_id]['clave']:
+        confirmar_venta(n_comp, t_comp, st.session_state.seleccionados, v_id, v_sel)
+    elif c_vend_v != "":
+        st.error("🔑 Clave incorrecta.")
+
+# --- 8. CUADRÍCULA DE BOLETOS (ORIGINAL LIMPIA) ---
+st.divider()
+
+# El único CSS que dejaremos es para que el botón use todo el ancho de su mini-columna
 st.markdown("""
     <style>
-    /* Solo afectamos a los botones que tienen números (los de la cuadrícula) */
     div.stButton > button {
         width: 100% !important;
-        padding: 5px 0px !important;
-        font-size: 14px !important;
-    }
-    /* Estilo para los inputs de arriba para que no se corten */
-    .stTextInput > label, .stSelectbox > label {
-        white-space: nowrap !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# 1. Inputs principales: Usamos columnas estándar de Streamlit
-c1, c2, c3, c4 = st.columns(4)
-with c1: cliente = st.text_input("👤 Cliente:")
-with c2: tel = st.text_input("📞 WhatsApp:")
-with c3: 
-    v_nombres = {v['nombre']: k for k, v in vendedores_datos.items()}
-    v_sel = st.selectbox("🧤 Vendedor:", ["Seleccionar..."] + list(v_nombres.keys()))
-with c4: v_pass = st.text_input("🔑 Clave:", type="password")
+boletos_ordenados = sorted(datos_boletos.items())
+cols_n = 10 # Regresamos a tus 10 columnas originales
 
-st.divider()
-
-# 2. Cantidad y Ayuda
-cant = st.number_input("Boletos a comprar:", min_value=1, value=1)
-
-ca, cl, _ = st.columns([2, 2, 6])
-with ca:
-    btn_aleatorio = st.button("🎲 Aleatorio")
-with cl:
-    btn_limpiar = st.button("🗑️ Limpiar")
-
-if btn_aleatorio:
-    libres = [n for n, v in datos_boletos.items() if v['estado'] == 'disponible']
-    st.session_state.seleccionados = random.sample(libres, min(cant, len(libres)))
-    st.rerun()
-
-if btn_limpiar:
-    st.session_state.seleccionados = []
-    st.rerun()
-
-st.write(f"Seleccionados: **{', '.join(sorted(st.session_state.seleccionados))}**")
-
-# --- 8. CUADRÍCULA DE BOLETOS (LÓGICA ESTABLE) ---
-st.divider()
-
-# Lógica de venta automática
-if len(st.session_state.seleccionados) == cant and cliente and v_sel != "Seleccionar...":
-    vid = v_nombres[v_sel]
-    if v_pass == vendedores_datos[vid]['clave']:
-        confirmar_venta(cliente, tel, st.session_state.seleccionados, vid, v_sel)
-
-# Render de la cuadrícula: 10 columnas en PC, Streamlit bajará a 1 en Celular por estabilidad
-boletos_lista = sorted(datos_boletos.items())
-cols_n = 10
-
-# Dibujamos por filas para asegurar alineación perfecta en PC
-for i in range(0, len(boletos_lista), cols_n):
-    fila = boletos_lista[i : i + cols_n]
+# Dibujamos por filas para que en PC se vea como tabla perfecta
+for i in range(0, len(boletos_ordenados), cols_n):
+    fila = boletos_ordenados[i : i + cols_n]
     columnas = st.columns(cols_n)
     
     for idx, (num, info) in enumerate(fila):
         with columnas[idx]:
             if info['estado'] == 'disponible':
                 if num in st.session_state.seleccionados:
-                    if st.button(f"🟡{num}", key=f"btn_{num}"):
+                    # Amarillo si está seleccionado
+                    if st.button(f"🟡{num}", key=f"b_{num}"):
                         st.session_state.seleccionados.remove(num)
                         st.rerun()
                 else:
+                    # Normal si está libre
                     des = len(st.session_state.seleccionados) >= cant
-                    if st.button(num, key=f"btn_{num}", disabled=des):
-                        if cliente:
+                    if st.button(num, key=f"b_{num}", disabled=des):
+                        if n_comp:
                             st.session_state.seleccionados.append(num)
                             st.rerun()
                         else:
                             st.warning("Nombre")
             else:
-                st.button("❌", key=f"btn_{num}", disabled=True)
+                # X si ya se vendió
+                st.button("❌", key=f"b_{num}", disabled=True)
