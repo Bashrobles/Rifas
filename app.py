@@ -208,42 +208,53 @@ if cl.button("🗑️ Limpiar"):
 
 st.write(f"Seleccionados: **{', '.join(st.session_state.seleccionados)}**")
 
-# --- 7. CUADRÍCULA FLUIDA (SE ACOMODA SOLA) ---
+# --- 7. CUADRÍCULA FLUIDA (SE ACOMODA SOLA CON TAMAÑO MÍNIMO FIJO) ---
 st.divider()
 
-# Este CSS es la clave: 
-# 1. Quita el límite de ancho de las columnas.
-# 2. Hace que los botones se mantengan en una cuadrícula flexible.
+# Inyectamos el CSS mágico para lograr el diseño fluido y el tamaño de los boletos.
+# Jugaremos con el valor de flex y min-width para el tamaño.
 st.markdown("""
     <style>
-    /* Forzamos a que el contenedor de columnas sea flexible y use todo el ancho */
-    [data-testid="stHorizontalBlock"] {
+    /* 1. Preparamos el contenedor principal para que sea flexible y use todo el ancho */
+    div[data-testid="stHorizontalBlock"] {
         display: flex !important;
         flex-wrap: wrap !important;
-        justify-content: flex-start !important;
+        justify-content: flex-start !important; /* Alinea los boletos a la izquierda */
+        gap: 5px !important; /* Espacio entre boletos */
     }
     
-    /* Definimos el tamaño fijo de cada "celda" de boleto */
+    /* 2. Definimos el tamaño fijo y cómodo de cada cuadro de boleto */
+    /* Este es el bloque que hace que no se apreten */
     [data-testid="column"] {
-        flex: 0 1 70px !important; /* Cada cuadro medirá 70px de ancho */
-        min-width: 70px !important;
-        margin-bottom: 5px !important;
+        flex: 0 1 80px !important; /* Un poco más grande para comodidad, unos 80px de ancho */
+        min-width: 80px !important;
+        max-width: 80px !important; /* Mantiene el ancho constante */
+        margin-bottom: 5px !important; /* Espacio debajo de cada fila */
+        padding: 0 !important; /* Evita que Streamlit encime paddings */
     }
 
+    /* 3. Estilo para el botón dentro del cuadro para que llene todo el espacio */
     div.stButton > button {
         width: 100% !important;
+        height: 60px !important; /* Lo hacemos un poquito más alto para que sea fácil de tocar */
         padding: 5px 0px !important;
+        font-size: 16px !important; /* Aumentamos el tamaño de la letra para mayor visibilidad */
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
 boletos_lista = sorted(datos_boletos.items())
 
-# El truco: Creamos tantas columnas como boletos existan.
-# El CSS de arriba se encarga de "romper" la línea cuando ya no quepan más a lo ancho.
+# El truco para que el CSS de arriba funcione: 
+# NO usamos bucles que dividan en 10. Creamos tantas columnas como boletos existan.
+# El CSS se encargará de "romper" la línea cuando ya no quepan más a lo ancho.
 cols = st.columns(len(boletos_lista))
 
 for i, (num, info) in enumerate(boletos_lista):
+    # Usamos cols[i] para poner un boleto por columna creada
     with cols[i]:
         if info['estado'] == 'disponible':
             if num in st.session_state.seleccionados:
