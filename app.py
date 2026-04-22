@@ -16,38 +16,35 @@ st.set_page_config(
 )
 
 # --- 1. CONEXIÓN A FIREBASE (VERSIÓN BLINDADA) ---
+# --- 1. CONEXIÓN A FIREBASE (VERSIÓN SIN ARCHIVOS) ---
 if not firebase_admin._apps:
     try:
         if "firebase_json" in st.secrets:
-            # Obtenemos la info directamente del diccionario de secrets
+            # Extraemos como diccionario
             cred_info = dict(st.secrets["firebase_json"])
             
-            # LIMPIEZA AGRESIVA DE LA LLAVE
-            # Quitamos comillas accidentales y arreglamos los saltos de línea
+            # Limpieza total de la llave: 
+            # 1. Quitamos espacios accidentales
+            # 2. Arreglamos los saltos de línea \n
+            # 3. Quitamos posibles comillas extra
             raw_key = cred_info["private_key"]
-            clean_key = raw_key.replace("\\n", "\n").replace('"', '').strip()
+            clean_key = raw_key.replace("\\n", "\n").strip().strip('"')
             cred_info["private_key"] = clean_key
             
-            # Usamos el archivo temporal para asegurar compatibilidad total con PEM
-            with tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".json") as f:
-                json.dump(cred_info, f)
-                temp_path = f.name
-            
-            cred = credentials.Certificate(temp_path)
+            # Inicializamos DIRECTO con el diccionario, sin archivo temporal
+            cred = credentials.Certificate(cred_info)
             firebase_admin.initialize_app(cred, {
                 'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/'
             })
-            os.remove(temp_path)
-        elif os.path.exists("credenciales.json"):
-            # Caso local
+        else:
+            # Local
             cred = credentials.Certificate("credenciales.json")
             firebase_admin.initialize_app(cred, {
                 'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/'
             })
     except Exception as e:
-        st.error(f"❌ Error crítico de conexión: {e}")
+        st.error(f"❌ Error de conexión: {e}")
         st.stop()
-
 # Referencias
 boletos_ref = db.reference('boletos')
 config_ref = db.reference('configuracion')
