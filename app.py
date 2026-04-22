@@ -102,6 +102,16 @@ with st.sidebar:
             dinero_global = sum([v.get('ingreso', PRECIO_BOLETO) for k, v in datos_boletos.items() if v['estado'] == 'ocupado'])
             st.write(f"Ventas: {len(ocupados_list)}/{total_n} (${dinero_global:,.2f})")
             
+            # --- FUNCIÓN RESTAURADA: EDITOR DE PLANTILLA ---
+            st.subheader("📝 Plantilla WhatsApp")
+            with st.expander("Editar Mensaje"):
+                st.caption("Usa {{nombre}} y {{boletos}} como variables.")
+                nueva_plantilla = st.text_area("Cuerpo del mensaje:", value=MENSAJE_TEMPLATE, height=150)
+                if st.button("Guardar Plantilla"):
+                    config_ref.update({"mensaje_template": nueva_plantilla})
+                    st.success("Plantilla actualizada exitosamente")
+                    st.rerun()
+
             # WHATSAPP PENDIENTES
             st.subheader("📩 Pendientes")
             pendientes = {k: v for k, v in datos_boletos.items() if v['estado'] == 'ocupado' and not v.get('notificado')}
@@ -174,15 +184,17 @@ with st.sidebar:
                 nv = st.text_input("Nombre:")
                 cv = st.text_input("Clave:", type="password")
                 if st.button("Crear"):
-                    vendedores_ref.push({'nombre': nv, 'clave': cv, 'ventas': 0, 'ingresos': 0}); st.rerun()
+                    vendedores_ref.push({'nombre': nv, 'clave': cv, 'ventas': 0, 'ingresos': 0})
+                    st.rerun()
                 st.divider()
                 if vendedores_datos:
                     v_del_map = {v['nombre']: k for k, v in vendedores_datos.items()}
                     target = st.selectbox("Eliminar vendedor:", list(v_del_map.keys()))
                     if st.button("🗑️ Eliminar Definitivamente", type="primary"):
-                        vendedores_ref.child(v_del_map[target]).delete(); st.rerun()
+                        vendedores_ref.child(v_del_map[target]).delete()
+                        st.rerun()
 
-            # CORTE DE CAJA (AHORA MUESTRA INGRESOS REALES)
+            # CORTE DE CAJA (MUESTRA INGRESOS REALES)
             st.subheader("💰 Corte de Caja")
             if vendedores_datos:
                 for vid, vinfo in vendedores_datos.items():
@@ -206,10 +218,12 @@ with st.sidebar:
             
             new_p = st.number_input("Precio Boleto:", value=float(PRECIO_BOLETO))
             if st.button("Actualizar Precio"):
-                config_ref.update({"precio_boleto": new_p}); st.rerun()
+                config_ref.update({"precio_boleto": new_p})
+                st.rerun()
 
             if st.button("🚨 REINICIAR TODO", type="primary"):
-                boletos_ref.delete(); st.rerun()
+                boletos_ref.delete()
+                st.rerun()
 
 # --- 6. INTERFAZ VENDEDOR ---
 st.title("🎟️ Sistema de Rifas - CUCEI")
@@ -257,7 +271,8 @@ if ca.button("🎲 Completar"):
             st.rerun()
 
 if cl.button("🗑️ Limpiar Selección"):
-    st.session_state.seleccionados = []; st.rerun()
+    st.session_state.seleccionados = []
+    st.rerun()
 
 st.write(f"Seleccionados: **{', '.join(sorted(st.session_state.seleccionados))}** ({len(st.session_state.seleccionados)}/{cant})")
 
@@ -279,6 +294,7 @@ if len(st.session_state.seleccionados) == cant and cliente and v_sel != "Selecci
             
     else:
         st.error("🔑 Clave de vendedor incorrecta.")
+
 # --- 7. CUADRÍCULA ESTABLE (10 COLS PC) ---
 st.divider()
 st.markdown("<style>div.stButton > button {width:100% !important;}</style>", unsafe_allow_html=True)
@@ -292,10 +308,16 @@ for i in range(0, len(boletos_lista), cols_n):
         with cols[idx]:
             if info['estado'] == 'disponible':
                 if num in st.session_state.seleccionados:
-                    if st.button(f"🟡{num}", key=f"n_{num}"): st.session_state.seleccionados.remove(num); st.rerun()
+                    if st.button(f"🟡{num}", key=f"n_{num}"): 
+                        st.session_state.seleccionados.remove(num)
+                        st.rerun()
                 else:
                     des = len(st.session_state.seleccionados) >= cant
                     if st.button(num, key=f"n_{num}", disabled=des):
-                        if cliente: st.session_state.seleccionados.append(num); st.rerun()
-                        else: st.warning("Escribe el nombre")
-            else: st.button("❌", key=f"n_{num}", disabled=True)
+                        if cliente: 
+                            st.session_state.seleccionados.append(num)
+                            st.rerun()
+                        else: 
+                            st.warning("Escribe el nombre")
+            else: 
+                st.button("❌", key=f"n_{num}", disabled=True)
