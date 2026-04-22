@@ -230,29 +230,48 @@ with st.sidebar:
 # --- 5. INTERFAZ VENDEDOR ---
 st.title("🎟️ Sistema de Rifas - Apoyo Estudiantil")
 
-# --- 🎨 CSS PARA FORZAR CUADRÍCULA EN MÓVIL ---
+# --- 🎨 CSS INTELIGENTE (PC vs MÓVIL) ---
 st.markdown("""
     <style>
-    /* Forzar 5 columnas en cualquier pantalla */
-    [data-testid="column"] {
-        width: calc(20% - 5px) !important;
-        flex: 1 1 calc(20% - 5px) !important;
-        min-width: calc(20% - 5px) !important;
-    }
-    /* Botones más compactos */
+    /* Estilo base para todos los botones de boletos */
     div.stButton > button {
-        width: 100%;
+        width: 100% !important;
         padding: 5px 0px !important;
-        font-size: 12px !important;
+        font-size: 13px !important;
+        border-radius: 4px;
+        margin-bottom: 2px;
     }
-    /* Reducir espacios entre elementos */
-    [data-testid="stHorizontalBlock"] {
-        gap: 5px !important;
+
+    /* AJUSTES PARA MÓVILES (Pantallas de menos de 768px) */
+    @media (max-width: 768px) {
+        [data-testid="column"] {
+            width: 19% !important; /* Aproximadamente 5 columnas */
+            flex: 1 1 19% !important;
+            min-width: 15% !important;
+        }
+        [data-testid="stHorizontalBlock"] {
+            gap: 3px !important;
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: wrap !important; /* Permite que bajen a la siguiente fila de 5 */
+        }
+    }
+
+    /* AJUSTES PARA COMPUTADORA (Pantallas grandes) */
+    @media (min-width: 769px) {
+        [data-testid="column"] {
+            width: 9% !important; /* Aproximadamente 10 columnas */
+            flex: 1 1 9% !important;
+            min-width: 60px !important;
+        }
+        [data-testid="stHorizontalBlock"] {
+            gap: 8px !important;
+        }
     }
     </style>
     """, unsafe_allow_html=True)
 
-# 1. Inputs de datos (Los definimos ANTES de usarlos)
+# 1. Inputs de datos del vendedor y cliente
 c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 1.2])
 with c1: n_comp = st.text_input("👤 Nombre Cliente:")
 with c2: t_comp = st.text_input("📞 WhatsApp (10 dígitos):")
@@ -263,7 +282,7 @@ with c4: c_vend_v = st.text_input("🔑 Clave:", type="password")
 
 st.divider()
 
-# 2. Cantidad de boletos (Variable 'cant' fundamental)
+# 2. Cantidad de boletos a vender
 cant = st.number_input("🎟️ ¿Cuántos boletos?", min_value=1, max_value=len(datos_boletos), value=1)
 
 # 3. Lógica de Confirmación de Venta
@@ -275,39 +294,41 @@ if len(st.session_state.seleccionados) == cant:
         elif c_vend_v != "":
             st.error("🔑 Clave incorrecta.")
 
-# 4. Botones de ayuda
+# 4. Botones de ayuda rápidos
 col_a, col_l, _ = st.columns([2, 2, 6])
-if col_a.button("🎲 Aleatorio"):
+if col_a.button("🎲 Selección Aleatoria"):
     libres = [n for n, i in datos_boletos.items() if i['estado'] == 'disponible' and n not in st.session_state.seleccionados]
     if len(libres) >= (cant - len(st.session_state.seleccionados)):
         st.session_state.seleccionados.extend(random.sample(libres, cant - len(st.session_state.seleccionados)))
         st.rerun()
 
-if col_l.button("🗑️ Limpiar"):
+if col_l.button("🗑️ Limpiar Selección"):
     st.session_state.seleccionados = []
     st.rerun()
 
-st.write(f"Seleccionados: **{', '.join(st.session_state.seleccionados)}**")
+if st.session_state.seleccionados:
+    st.info(f"Seleccionados: **{', '.join(sorted(st.session_state.seleccionados))}**")
 
-# --- 5. RENDER DE CUADRÍCULA (5 COLUMNAS) ---
+# --- 5. RENDER DE CUADRÍCULA DINÁMICA ---
 st.divider()
 boletos_ordenados = sorted(datos_boletos.items())
-cols_fijas = 5 # Esto es lo mejor para el ancho del celular
 
-for i in range(0, len(boletos_ordenados), cols_fijas):
-    fila = boletos_ordenados[i : i + cols_fijas]
-    columnas = st.columns(cols_fijas)
+# Usamos 10 columnas en el código. 
+# El CSS se encargará de que en móvil se vean de 5 en 5 o se ajusten.
+cols_base = 10 
+
+for i in range(0, len(boletos_ordenados), cols_base):
+    fila = boletos_ordenados[i : i + cols_base]
+    columnas = st.columns(cols_base)
     
     for idx, (num, info) in enumerate(fila):
         with columnas[idx]:
-            # Lógica de estados del botón
             if info['estado'] == 'disponible':
                 if num in st.session_state.seleccionados:
                     if st.button(f"🟡{num}", key=f"b_{num}"):
                         st.session_state.seleccionados.remove(num)
                         st.rerun()
                 else:
-                    # Aquí es donde fallaba: 'cant' ya está definida arriba
                     deshabilitado = len(st.session_state.seleccionados) >= cant
                     if st.button(f"{num}", key=f"b_{num}", disabled=deshabilitado):
                         if n_comp:
@@ -316,4 +337,5 @@ for i in range(0, len(boletos_ordenados), cols_fijas):
                         else:
                             st.warning("Falta nombre")
             else:
-                st.button("❌", key=f"b_{num}", disabled=True)
+                # Botón de vendido
+                st.button("❌", key=f"b_{num}", disabled=True, help=f"Vendido por {info.get('vendedor')}")
