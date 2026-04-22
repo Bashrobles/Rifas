@@ -7,7 +7,7 @@ import json
 import tempfile
 import os
 
-# --- CONFIGURACIÓN INICIAL ---
+# --- 1. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
     page_title="Gestión de Rifa Pro",
     page_icon="🎟️",
@@ -15,7 +15,38 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 1. CONEXIÓN A FIREBASE (VERSIÓN ROBUSTA INTEGRADA) ---
+# --- 2. CSS PARA RESPONSIVIDAD (PC vs MÓVIL) ---
+st.markdown("""
+    <style>
+    /* Estilo para que los botones llenen su columna */
+    div.stButton > button {
+        width: 100% !important;
+        padding: 5px 0px !important;
+        font-size: 14px !important;
+    }
+    
+    /* Eliminar espacios excesivos en móviles */
+    @media (max-width: 768px) {
+        [data-testid="column"] {
+            flex: 1 1 18% !important;
+            min-width: 18% !important;
+        }
+        [data-testid="stHorizontalBlock"] {
+            gap: 3px !important;
+        }
+    }
+    
+    /* Ajuste para PC para que no se estiren de más */
+    @media (min-width: 769px) {
+        [data-testid="column"] {
+            flex: 1 1 9% !important;
+            min-width: 9% !important;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 3. CONEXIÓN A FIREBASE ---
 if not firebase_admin._apps:
     try:
         if "FIREBASE_RAW_JSON" in st.secrets:
@@ -39,12 +70,14 @@ if not firebase_admin._apps:
             })
     except Exception as e:
         st.error(f"Error de conexión: {e}")
+        st.stop()
 
+# Referencias de Base de Datos
 boletos_ref = db.reference('boletos')
 config_ref = db.reference('configuracion')
 vendedores_ref = db.reference('vendedores')
 
-# --- 2. FUNCIONES DE INICIALIZACIÓN ---
+# --- 4. FUNCIONES DE APOYO ---
 def inicializar_bd(total=100):
     nuevos_boletos = {}
     digitos = len(str(total - 1))
@@ -55,14 +88,12 @@ def inicializar_bd(total=100):
     
     default_msg = (
         "Hola {{nombre}}, gracias por colaborar a las rifas para apoyo estudiantil. "
-        "Confirmamos la compra de tus boletos: {{boletos}}. "
-        "La rifa se llevara a cabo el 21 de agosto en base a los ultimos 3 digitos del premio mayor de la loteria nacional mexicana. "
-        "Facebook: [LINK DE TU PÁGINA] "
-        "Instagram: https://www.instagram.com/rifas_cucei?utm_source=qr&igsh=ZjRpaTA1b3VwanJ5"
+        "Confirmamos tus boletos: {{boletos}}. La rifa es el 21 de agosto. "
+        "Instagram: https://www.instagram.com/rifas_cucei"
     )
     config_ref.set({"mensaje_template": default_msg, "precio_boleto": 50.0})
 
-# Carga de Datos
+# Carga de datos inicial
 datos_crudos = boletos_ref.get()
 config_datos = config_ref.get() or {}
 vendedores_datos = vendedores_ref.get() or {}
@@ -77,354 +108,126 @@ PRECIO_BOLETO = config_datos.get('precio_boleto', 0.0)
 if 'seleccionados' not in st.session_state:
     st.session_state.seleccionados = []
 
+# Procesar boletos
 datos_boletos = {}
 if isinstance(datos_crudos, list):
     for i, info in enumerate(datos_crudos):
-        if info is not None: datos_boletos[str(i).zfill(len(str(len(datos_crudos)-1)))] = info
-elif isinstance(datos_crudos, dict):
+        if info: datos_boletos[str(i).zfill(len(str(len(datos_crudos)-1)))] = info
+else:
     datos_boletos = datos_crudos
 
-# --- 3. DIÁLOGOS (MODALES) ---
-@st.dialog("📝 Editar Plantilla de Mensaje")
-def ventana_mensaje():
-    nuevo_texto = st.text_area("Cuerpo del mensaje:", value=MENSAJE_TEMPLATE, height=200)
-    if st.button("💾 Guardar Plantilla"):
-        config_ref.update({"mensaje_template": nuevo_texto})
-        st.success("Guardado correctamente.")
-        st.rerun()
-
+# --- 5. MODALES (DIÁLOGOS) ---
 @st.dialog("🛒 Confirmar Venta")
-def confirmar_venta(nombre, telefono, boletos, vendedor_id, vendedor_nombre):
-    st.write(f"**Cliente:** {nombre}")
+def confirmar_venta(nombre, telefono, boletos, v_id, v_nombre):
+    st.write(f"**Cliente:** {nombre} | **Vendedor:** {v_nombre}")
     st.write(f"**Boletos:** {', '.join(sorted(boletos))}")
-    st.write(f"**Vendedor:** {vendedor_nombre}")
-    
-    col_si, col_no = st.columns(2)
-    if col_si.button("✅ Registrar", use_container_width=True):
+    if st.button("✅ Registrar Venta", use_container_width=True):
         for b in boletos:
             boletos_ref.child(b).update({
                 "estado":"ocupado", "dueño":nombre, "telefono":telefono, 
-                "notificado":False, "vendedor": vendedor_nombre
+                "notificado":False, "vendedor": v_nombre
             })
-        ventas_actuales = vendedores_datos[vendedor_id].get('ventas', 0)
-        vendedores_ref.child(vendedor_id).update({'ventas': ventas_actuales + len(boletos)})
-        st.session_state.seleccionados = []
-        st.rerun()
-    if col_no.button("❌ Cancelar", use_container_width=True):
+        v_actuales = vendedores_datos[v_id].get('ventas', 0)
+        vendedores_ref.child(v_id).update({'ventas': v_actuales + len(boletos)})
         st.session_state.seleccionados = []
         st.rerun()
 
-# --- 4. PANEL ADMINISTRADOR ---
+# --- 6. PANEL ADMINISTRADOR (SIDEBAR) ---
 with st.sidebar:
-    st.header("⚙️ Panel Admin")
-    if st.toggle("Desbloquear Opciones"):
-        password = st.text_input("Clave Maestra:", type="password")
-        
-        # SEGURIDAD: Leer desde Secrets si existe, si no, usar "1234"
-        clave_admin = st.secrets.get("ADMIN_PASSWORD", "1234")
-        
-        if password == clave_admin:
-            st.success("Acceso Autorizado")
-            st.divider()
-
-            # --- 📊 BARRA DE PROGRESO ---
-            total_b = len(datos_boletos)
-            ocupados_list = [k for k, v in datos_boletos.items() if v['estado'] == 'ocupado']
-            vendidos_n = len(ocupados_list)
-            porcentaje = (vendidos_n / total_b) if total_b > 0 else 0
+    st.header("⚙️ Admin")
+    if st.toggle("Modo Admin"):
+        password = st.text_input("Clave:", type="password")
+        if password == st.secrets.get("ADMIN_PASSWORD", "1234"):
+            st.success("Autorizado")
             
-            st.subheader("📈 Avance de Ventas")
-            st.progress(porcentaje)
-            st.write(f"Progreso: **{porcentaje*100:.1f}%** ({vendidos_n}/{total_b})")
-            st.divider()
-
-            # --- 📩 1. PENDIENTES WHATSAPP ---
-            st.subheader("📩 Mensajes Pendientes")
-            pendientes = {k: v for k, v in datos_boletos.items() if v['estado'] == 'ocupado' and not v.get('notificado', False)}
+            # Progreso
+            total_b = len(datos_boletos)
+            ocupados = [k for k, v in datos_boletos.items() if v['estado'] == 'ocupado']
+            st.write(f"Ventas: {len(ocupados)}/{total_b}")
+            st.progress(len(ocupados)/total_b)
+            
+            # Pendientes WhatsApp
+            st.subheader("📲 WhatsApp")
+            pendientes = {k: v for k, v in datos_boletos.items() if v['estado'] == 'ocupado' and not v.get('notificado')}
             if pendientes:
                 agrupados = {}
-                for num, info in pendientes.items():
-                    llave = (info['dueño'], info['telefono'])
-                    if llave not in agrupados: agrupados[llave] = []
-                    agrupados[llave].append(num)
+                for n, i in pendientes.items():
+                    key = (i['dueño'], i['telefono'])
+                    if key not in agrupados: agrupados[key] = []
+                    agrupados[key].append(n)
                 
                 for (comprador, tel), lista in agrupados.items():
-                    llave_base = f"{comprador}_{tel}_{lista[0]}"
-                    with st.expander(f"👤 {comprador} ({len(lista)})"):
+                    with st.expander(f"👤 {comprador}"):
                         if tel:
-                            t_limpio = "".join(filter(str.isdigit, tel))
-                            if len(t_limpio) == 10: t_limpio = "52" + t_limpio
-                            msj = MENSAJE_TEMPLATE.replace("{{nombre}}", comprador).replace("{{boletos}}", ", ".join(lista))
-                            st.link_button("📲 Enviar WhatsApp", f"https://wa.me/{t_limpio}?text={urllib.parse.quote(msj)}")
-                        
-                        col_e, col_c = st.columns(2)
-                        if col_e.button("✅ Enviado", key=f"btn_env_{llave_base}"):
+                            t = "".join(filter(str.isdigit, tel))
+                            if len(t) == 10: t = "52" + t
+                            m = MENSAJE_TEMPLATE.replace("{{nombre}}", comprador).replace("{{boletos}}", ", ".join(lista))
+                            st.link_button("Enviar", f"https://wa.me/{t}?text={urllib.parse.quote(m)}")
+                        if st.button("Marcar Enviado", key=f"not_{lista[0]}"):
                             for b in lista: boletos_ref.child(b).update({"notificado": True})
                             st.rerun()
-                        if col_c.button("🚫 Cancelar", key=f"btn_can_{llave_base}", type="primary"):
-                            for b in lista: boletos_ref.child(b).update({"estado":"disponible", "dueño":"", "vendedor":"", "telefono": "", "notificado": False})
-                            st.rerun()
-            else:
-                st.info("No hay pendientes.")
-            st.divider()
-
-            # --- 🔍 2. BUSCAR / LIBERAR ---
-            st.subheader("🔍 Gestión de Números")
-            if ocupados_list:
-                b_rev = st.selectbox("Elegir boleto vendido:", sorted(ocupados_list, key=int))
-                info_b = datos_boletos[b_rev]
-                st.write(f"Dueño: {info_b['dueño']} | Vendedor: {info_b.get('vendedor', 'N/A')}")
-                if st.button("🔓 Liberar Número", type="primary"):
-                    boletos_ref.child(b_rev).update({"estado": "disponible", "dueño": "", "telefono": "", "notificado": False, "vendedor": ""})
-                    st.rerun()
-            st.divider()
-
-            # --- 👥 3. VENDEDORES ---
+            
+            # Gestión de Vendedores
             st.subheader("👥 Vendedores")
-            with st.expander("➕ Nuevo Vendedor"):
-                n_vend = st.text_input("Nombre:")
-                c_vend = st.text_input("Clave de acceso:", type="password")
-                if st.button("Crear"):
-                    vendedores_ref.push({'nombre': n_vend, 'clave': c_vend, 'ventas': 0})
-                    st.rerun()
+            for vid, vinfo in vendedores_datos.items():
+                st.write(f"{vinfo['nombre']}: {vinfo.get('ventas',0)}")
             
-            if vendedores_datos:
-                with st.expander("🗑️ Eliminar Vendedor"):
-                    v_opciones_del = {v['nombre']: k for k, v in vendedores_datos.items()}
-                    v_a_borrar = st.selectbox("Seleccionar para borrar:", options=list(v_opciones_del.keys()))
-                    if st.button("⚠️ Borrar Definitivamente"):
-                        vendedores_ref.child(v_opciones_del[v_a_borrar]).delete()
-                        st.rerun()
-
-                st.write("**Corte de Caja:**")
-                for vid, vinfo in vendedores_datos.items():
-                    st.write(f"- {vinfo['nombre']}: {vinfo.get('ventas', 0)} vendidos")
-                
-                if st.button("💰 Resetear Corte (Cero)"):
-                    for vid in vendedores_datos: vendedores_ref.child(vid).update({'ventas': 0})
-                    st.rerun()
-            st.divider()
-
-            # --- 4. EXTRAS ---
-            if st.button("📧 Editar Mensaje", use_container_width=True):
-                ventana_mensaje()
-            
-            st.subheader("📢 Difusión")
-            contactos = {v['telefono']: v['dueño'] for v in datos_boletos.values() if v['estado'] == 'ocupado' and v['telefono']}
-            if contactos:
-                csv = "Name,Phone\n" + "\n".join([f"{n},{t}" for t, n in contactos.items()])
-                st.download_button("📥 Descargar Contactos CSV", csv, "contactos.csv", "text/csv", use_container_width=True)
-            
-            st.divider()
-            st.subheader("⚠️ Zona Peligrosa")
-            nuevo_t = st.number_input("Cantidad total:", value=len(datos_boletos))
-            precio_t = st.number_input("Precio:", value=PRECIO_BOLETO)
-            if st.button("🚨 REINICIAR TODO"):
-                inicializar_bd(nuevo_t)
-                config_ref.update({"precio_boleto": precio_t})
-                st.session_state.seleccionados = []
+            if st.button("🚨 Reiniciar Todo"):
+                boletos_ref.delete()
                 st.rerun()
-        elif password != "":
-            st.error("Clave Incorrecta")
 
-# --- 5. INTERFAZ VENDEDOR ---
-st.title("🎟️ Sistema de Rifas - Apoyo Estudiantil")
+# --- 7. INTERFAZ PÚBLICA / VENDEDOR ---
+st.title("🎟️ Rifa Apoyo Estudiantil")
 
-# --- 🎨 CSS INTELIGENTE (PC vs MÓVIL) ---
-st.markdown("""
-    <style>
-    /* Estilo base para todos los botones de boletos */
-    div.stButton > button {
-        width: 100% !important;
-        padding: 5px 0px !important;
-        font-size: 13px !important;
-        border-radius: 4px;
-        margin-bottom: 2px;
-    }
-
-    /* AJUSTES PARA MÓVILES (Pantallas de menos de 768px) */
-    @media (max-width: 768px) {
-        [data-testid="column"] {
-            width: 19% !important; /* Aproximadamente 5 columnas */
-            flex: 1 1 19% !important;
-            min-width: 15% !important;
-        }
-        [data-testid="stHorizontalBlock"] {
-            gap: 3px !important;
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: wrap !important; /* Permite que bajen a la siguiente fila de 5 */
-        }
-    }
-
-    /* AJUSTES PARA COMPUTADORA (Pantallas grandes) */
-    @media (min-width: 769px) {
-        [data-testid="column"] {
-            width: 9% !important; /* Aproximadamente 10 columnas */
-            flex: 1 1 9% !important;
-            min-width: 60px !important;
-        }
-        [data-testid="stHorizontalBlock"] {
-            gap: 8px !important;
-        }
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# 1. Inputs de datos del vendedor y cliente
+# Inputs principales
 c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 1.2])
-with c1: n_comp = st.text_input("👤 Nombre Cliente:")
-with c2: t_comp = st.text_input("📞 WhatsApp (10 dígitos):")
+with c1: cliente = st.text_input("👤 Cliente:")
+with c2: tel = st.text_input("📞 WhatsApp:")
 with c3: 
-    v_opc = {v['nombre']: k for k, v in vendedores_datos.items()}
-    v_sel = st.selectbox("🧤 Vendedor:", ["Seleccionar..."] + list(v_opc.keys()))
-with c4: c_vend_v = st.text_input("🔑 Clave:", type="password")
+    v_nombres = {v['nombre']: k for k, v in vendedores_datos.items()}
+    v_sel = st.selectbox("🧤 Vendedor:", ["Seleccionar..."] + list(v_nombres.keys()))
+with c4: v_pass = st.text_input("🔑 Clave:", type="password")
 
 st.divider()
 
-# 2. Cantidad de boletos a vender
-cant = st.number_input("🎟️ ¿Cuántos boletos?", min_value=1, max_value=len(datos_boletos), value=1)
+# Cantidad y Ayuda
+cant = st.number_input("Boletos a comprar:", min_value=1, value=1)
+if len(st.session_state.seleccionados) == cant and cliente and v_sel != "Seleccionar...":
+    vid = v_nombres[v_sel]
+    if v_pass == vendedores_datos[vid]['clave']:
+        confirmar_venta(cliente, tel, st.session_state.seleccionados, vid, v_sel)
 
-# 3. Lógica de Confirmación de Venta
-if len(st.session_state.seleccionados) == cant:
-    if n_comp and v_sel != "Seleccionar...":
-        v_id = v_opc[v_sel]
-        if c_vend_v == vendedores_datos[v_id]['clave']:
-            confirmar_venta(n_comp, t_comp, st.session_state.seleccionados, v_id, v_sel)
-        elif c_vend_v != "":
-            st.error("🔑 Clave incorrecta.")
-
-# 4. Botones de ayuda rápidos
-col_a, col_l, _ = st.columns([2, 2, 6])
-if col_a.button("🎲 Selección Aleatoria"):
-    libres = [n for n, i in datos_boletos.items() if i['estado'] == 'disponible' and n not in st.session_state.seleccionados]
-    if len(libres) >= (cant - len(st.session_state.seleccionados)):
-        st.session_state.seleccionados.extend(random.sample(libres, cant - len(st.session_state.seleccionados)))
-        st.rerun()
-
-if col_l.button("🗑️ Limpiar Selección"):
+ca, cl, _ = st.columns([2, 2, 6])
+if ca.button("🎲 Aleatorio"):
+    libres = [n for n, v in datos_boletos.items() if v['estado'] == 'disponible']
+    st.session_state.seleccionados = random.sample(libres, cant)
+    st.rerun()
+if cl.button("🗑️ Limpiar"):
     st.session_state.seleccionados = []
     st.rerun()
 
-if st.session_state.seleccionados:
-    st.info(f"Seleccionados: **{', '.join(sorted(st.session_state.seleccionados))}**")
+st.write(f"Seleccionados: {', '.join(st.session_state.seleccionados)}")
 
-# --- 5. INTERFAZ VENDEDOR ---
-st.title("🎟️ Sistema de Rifas - Apoyo Estudiantil")
-
-# --- 🎨 CSS NIVEL DIOS (PC Y MÓVIL FORZADO) ---
-st.markdown("""
-    <style>
-    /* 1. FORZAR BOTONES A LLENAR TODO EL ANCHO */
-    div.stButton > button {
-        width: 100% !important;
-        display: block !important;
-        padding: 5px 0px !important;
-        font-size: 14px !important;
-        margin: 0px !important;
-    }
-
-    /* 2. ELIMINAR EL PADDING LATERAL DE LAS COLUMNAS */
-    [data-testid="column"] {
-        padding: 1px !important;
-    }
-
-    /* 3. CONFIGURACIÓN PARA MÓVILES (FORZAR 5 COLUMNAS) */
-    @media (max-width: 768px) {
-        [data-testid="stHorizontalBlock"] {
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: nowrap !important; /* Impide que se bajen */
-            gap: 2px !important;
-        }
-        [data-testid="column"] {
-            flex: 1 1 20% !important;
-            min-width: 18% !important;
-            max-width: 20% !important;
-        }
-    }
-
-    /* 4. CONFIGURACIÓN PARA PC (FORZAR 10 COLUMNAS) */
-    @media (min-width: 769px) {
-        [data-testid="stHorizontalBlock"] {
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: nowrap !important;
-            gap: 5px !important;
-        }
-        [data-testid="column"] {
-            flex: 1 1 10% !important;
-            min-width: 9% !important;
-            max-width: 10% !important;
-        }
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# 1. Inputs de datos
-c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 1.2])
-with c1: n_comp = st.text_input("👤 Nombre Cliente:")
-with c2: t_comp = st.text_input("📞 WhatsApp (10 dígitos):")
-with c3: 
-    v_opc = {v['nombre']: k for k, v in vendedores_datos.items()}
-    v_sel = st.selectbox("🧤 Vendedor:", ["Seleccionar..."] + list(v_opc.keys()))
-with c4: c_vend_v = st.text_input("🔑 Clave:", type="password")
-
+# --- 8. CUADRÍCULA DE BOLETOS ---
 st.divider()
+boletos_lista = sorted(datos_boletos.items())
 
-# 2. Cantidad de boletos
-cant = st.number_input("🎟️ ¿Cuántos boletos?", min_value=1, max_value=len(datos_boletos), value=1)
-
-# 3. Lógica de Confirmación
-if len(st.session_state.seleccionados) == cant:
-    if n_comp and v_sel != "Seleccionar...":
-        v_id = v_opc[v_sel]
-        if c_vend_v == vendedores_datos[v_id]['clave']:
-            confirmar_venta(n_comp, t_comp, st.session_state.seleccionados, v_id, v_sel)
-        elif c_vend_v != "":
-            st.error("🔑 Clave incorrecta.")
-
-# 4. Botones de ayuda
-col_a, col_l, _ = st.columns([2, 2, 6])
-if col_a.button("🎲 Aleatorio"):
-    libres = [n for n, i in datos_boletos.items() if i['estado'] == 'disponible' and n not in st.session_state.seleccionados]
-    if len(libres) >= (cant - len(st.session_state.seleccionados)):
-        st.session_state.seleccionados.extend(random.sample(libres, cant - len(st.session_state.seleccionados)))
-        st.rerun()
-
-if col_l.button("🗑️ Limpiar"):
-    st.session_state.seleccionados = []
-    st.rerun()
-
-if st.session_state.seleccionados:
-    st.info(f"Seleccionados: **{', '.join(sorted(st.session_state.seleccionados))}**")
-
-# --- 5. RENDER DE CUADRÍCULA (LÓGICA DINÁMICA) ---
-st.divider()
-boletos_ordenados = sorted(datos_boletos.items())
-
-# Detectar el ancho de pantalla en Streamlit es difícil, pero forzaremos 10 columnas en el código
-# El CSS se encarga de que en móvil no se rompa
-cols_fijas = 10 
-
-for i in range(0, len(boletos_ordenados), cols_fijas):
-    fila = boletos_ordenados[i : i + cols_fijas]
-    columnas = st.columns(cols_fijas)
-    
-    for idx, (num, info) in enumerate(fila):
-        with columnas[idx]:
-            if info['estado'] == 'disponible':
-                if num in st.session_state.seleccionados:
-                    if st.button(f"🟡{num}", key=f"b_{num}"):
-                        st.session_state.seleccionados.remove(num)
-                        st.rerun()
-                else:
-                    deshabilitado = len(st.session_state.seleccionados) >= cant
-                    if st.button(f"{num}", key=f"b_{num}", disabled=deshabilitado):
-                        if n_comp:
-                            st.session_state.seleccionados.append(num)
-                            st.rerun()
-                        else:
-                            st.warning("Nombre")
+# Usamos 10 columnas en el código, el CSS de arriba las ajustará a 5 en móvil
+cols = st.columns(10)
+for i, (num, info) in enumerate(boletos_lista):
+    with cols[i % 10]:
+        if info['estado'] == 'disponible':
+            if num in st.session_state.seleccionados:
+                if st.button(f"🟡{num}", key=f"btn_{num}"):
+                    st.session_state.seleccionados.remove(num)
+                    st.rerun()
             else:
-                st.button("❌", key=f"b_{num}", disabled=True)
+                des = len(st.session_state.seleccionados) >= cant
+                if st.button(num, key=f"btn_{num}", disabled=des):
+                    if cliente:
+                        st.session_state.seleccionados.append(num)
+                        st.rerun()
+                    else:
+                        st.warning("Nombre")
+        else:
+            st.button("❌", key=f"btn_{num}", disabled=True)
