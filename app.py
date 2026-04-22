@@ -215,36 +215,15 @@ if cl.button("🗑️ Limpiar"):
 
 st.write(f"Seleccionados: **{', '.join(sorted(st.session_state.seleccionados))}**")
 
-# --- 8. CUADRÍCULA DE BOLETOS (AISLADA Y RESPONSIVA) ---
+# --- 8. CUADRÍCULA DE BOLETOS (VERSIÓN RESPONSIVA LIMPIA) ---
 st.divider()
 
-# Inyectamos CSS que SOLO afecta al bloque de boletos que viene a continuación
+# CSS mínimo: solo para que los botones llenen su espacio y no se vean "flacos"
 st.markdown("""
     <style>
-    /* Estilo para los botones de números */
-    .st-key-grid-container div.stButton > button {
+    div.stButton > button {
         width: 100% !important;
-        padding: 4px 0px !important;
-        font-size: 14px !important;
-    }
-
-    /* Contenedor específico para la cuadrícula */
-    div[data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"].css-grid-boletos {
-        display: grid !important;
-        gap: 5px !important;
-    }
-
-    /* Celular: 5 columnas */
-    @media (max-width: 768px) {
-        div.css-grid-boletos {
-            grid-template-columns: repeat(5, 1fr) !important;
-        }
-    }
-    /* PC: 10 columnas */
-    @media (min-width: 769px) {
-        div.css-grid-boletos {
-            grid-template-columns: repeat(10, 1fr) !important;
-        }
+        padding: 5px 0px !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -255,17 +234,20 @@ if len(st.session_state.seleccionados) == cant and cliente and v_sel != "Selecci
     if v_pass == vendedores_datos[vid]['clave']:
         confirmar_venta(cliente, tel, st.session_state.seleccionados, vid, v_sel)
 
-# Render de la cuadrícula
+# --- DETERMINAR COLUMNAS SEGÚN DISPOSITIVO ---
+# Truco pro: Streamlit no sabe en qué dispositivo estás, 
+# pero podemos usar 10 columnas y el 'gap' hará que en móvil se vea aceptable
+# o simplemente usar una cuadrícula balanceada.
+cols_pc = 10
 boletos_lista = sorted(datos_boletos.items())
 
-# Creamos un contenedor "falso" para aplicar el grid
-# Nota: Usamos un solo st.columns grande y el CSS se encarga del resto
-with st.container():
-    # Esta clase es la que el CSS busca para no romper lo de arriba
-    st.markdown('<div class="css-grid-boletos">', unsafe_allow_html=True)
-    cols = st.columns(10)
-    for i, (num, info) in enumerate(boletos_lista):
-        with cols[i % 10]:
+# Dibujamos las filas de 10 columnas
+for i in range(0, len(boletos_lista), cols_pc):
+    fila = boletos_lista[i : i + cols_pc]
+    columnas = st.columns(cols_pc) # Crea 10 columnas para esta fila
+    
+    for idx, (num, info) in enumerate(fila):
+        with columnas[idx]:
             if info['estado'] == 'disponible':
                 if num in st.session_state.seleccionados:
                     if st.button(f"🟡{num}", key=f"btn_{num}"):
@@ -278,7 +260,6 @@ with st.container():
                             st.session_state.seleccionados.append(num)
                             st.rerun()
                         else:
-                            st.warning("Escribe el nombre")
+                            st.warning("Nombre")
             else:
                 st.button("❌", key=f"btn_{num}", disabled=True)
-    st.markdown('</div>', unsafe_allow_html=True)
