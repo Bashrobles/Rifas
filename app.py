@@ -95,15 +95,22 @@ with st.sidebar:
                     if key not in agrupados: agrupados[key] = []
                     agrupados[key].append(n)
                 for (comp, tel_cli), lista in agrupados.items():
-                    with st.expander(f"👤 {comp}"):
+                    with st.expander(f"👤 {comp} ({len(lista)})"):
                         if tel_cli:
                             t = "".join(filter(str.isdigit, tel_cli))
                             if len(t) == 10: t = "52" + t
                             msj = MENSAJE_TEMPLATE.replace("{{nombre}}", comp).replace("{{boletos}}", ", ".join(lista))
-                            st.link_button("Mandar WhatsApp", f"https://wa.me/{t}?text={urllib.parse.quote(msj)}")
-                        if st.button("Marcar como Notificado", key=f"not_{lista[0]}"):
+                            st.link_button("📲 Mandar WhatsApp", f"https://wa.me/{t}?text={urllib.parse.quote(msj)}", use_container_width=True)
+                        
+                        c_env, c_can = st.columns(2)
+                        if c_env.button("✅ Enviado", key=f"not_{lista[0]}"):
                             for b in lista: boletos_ref.child(b).update({"notificado": True})
                             st.rerun()
+                        if c_can.button("🚫 Cancelar", key=f"can_{lista[0]}", type="primary"):
+                            for b in lista: boletos_ref.child(b).update({"estado":"disponible","dueño":"","telefono":"","vendedor":"","notificado":False})
+                            st.rerun()
+            else:
+                st.info("No hay mensajes pendientes.")
             
             # --- BUSCADOR POR BOLETO ---
             st.subheader("🔍 Buscar Comprador")
@@ -111,13 +118,13 @@ with st.sidebar:
                 b_sel_admin = st.selectbox("Elegir boleto vendido:", sorted(ocupados_list, key=int))
                 info_admin = datos_boletos[b_sel_admin]
                 st.info(f"👤 **{info_admin['dueño']}**\n\n📞 **{info_admin['telefono']}**")
-                if st.button("🔓 Liberar este número", type="primary"):
+                if st.button("🔓 Liberar este número específico", type="primary"):
                     boletos_ref.child(b_sel_admin).update({"estado":"disponible","dueño":"","telefono":"","vendedor":"","notificado":False})
                     st.rerun()
 
             # --- GESTIÓN VENDEDORES ---
             st.subheader("👥 Equipo")
-            with st.expander("Añadir Vendedor"):
+            with st.expander("➕ Añadir Vendedor"):
                 nv = st.text_input("Nombre:")
                 cv = st.text_input("Clave:", type="password")
                 if st.button("Crear"):
@@ -142,12 +149,7 @@ with st.sidebar:
             # --- EXPORTAR Y PRECIO ---
             st.subheader("📊 Extras")
             
-            # CSV de Ventas
-            csv_str = "Nombre,Telefono,Boletos\n"
-            for (nom, t), nums in agrupados.items() if (pendientes or ocupados_list) else {}:
-                # Re-agrupamos todos los vendidos para el CSV completo
-                pass 
-            # Lógica simple para CSV completo:
+            # Lógica para CSV completo
             todos_vendidos = {}
             for n, i in datos_boletos.items():
                 if i['estado'] == 'ocupado':
@@ -167,7 +169,7 @@ with st.sidebar:
                 config_ref.update({"precio_boleto": np})
                 st.rerun()
 
-            if st.button("🚨 REINICIAR TODO", type="primary"):
+            if st.button("🚨 REINICIAR TODO (PELIGRO)", type="primary"):
                 boletos_ref.delete()
                 st.rerun()
 
