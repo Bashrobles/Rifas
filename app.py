@@ -4,6 +4,8 @@ from firebase_admin import credentials, db
 import random
 import urllib.parse
 import json
+import tempfile 
+import os
 
 # --- CONFIGURACIÓN INICIAL ---
 st.set_page_config(
@@ -18,29 +20,32 @@ st.set_page_config(
 # --- 1. CONEXIÓN A FIREBASE ---
 # --- 1. CONEXIÓN A FIREBASE ---
 # --- 1. CONEXIÓN A FIREBASE ---
+# --- 1. CONEXIÓN A FIREBASE (VERSIÓN ROBUSTA) ---
 if not firebase_admin._apps:
     try:
-        if "firebase_json" in st.secrets:
-            # Creamos el diccionario a partir de los secrets de Streamlit
-            # Usamos dict() para asegurarnos de que sea un objeto compatible
-            cred_info = dict(st.secrets["firebase_json"])
+        if "FIREBASE_RAW_JSON" in st.secrets:
+            # Creamos un archivo temporal para guardar el JSON
+            with tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".json") as temp_file:
+                # Escribimos el contenido de los secrets directamente al archivo
+                temp_file.write(st.secrets["FIREBASE_RAW_JSON"])
+                temp_path = temp_file.name
             
-            # Forzamos a que la llave privada mantenga sus saltos de línea
-            # y eliminamos cualquier residuo de caracteres de escape fallidos
-            if "private_key" in cred_info:
-                # Si por alguna razón la llave trae el texto literal "\n", lo convertimos
-                cred_info["private_key"] = cred_info["private_key"].replace("\\n", "\n")
+            # Inicializamos usando la ruta del archivo temporal
+            cred = credentials.Certificate(temp_path)
+            firebase_admin.initialize_app(cred, {
+                'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/' 
+            })
             
-            cred = credentials.Certificate(cred_info)
+            # Borramos el archivo temporal de la memoria por seguridad
+            os.remove(temp_path)
         else:
-            # Local
+            # Caso local
             cred = credentials.Certificate("credenciales.json")
-        
-        firebase_admin.initialize_app(cred, {
-            'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/' 
-        })
+            firebase_admin.initialize_app(cred, {
+                'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/' 
+            })
     except Exception as e:
-        st.error(f"❌ Error de conexión: {e}")
+        st.error(f"❌ Error crítico de conexión: {e}")
         st.stop()
 
 
