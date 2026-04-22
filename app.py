@@ -57,14 +57,30 @@ else:
 def confirmar_venta(nombre, telefono, boletos, v_id, v_nombre, con_promo):
     subtotal = len(boletos) * PRECIO_BOLETO
     total = subtotal - 50 if con_promo else subtotal
+    
     st.write(f"**Cliente:** {nombre} | **Números:** {', '.join(sorted(boletos))}")
     if con_promo: st.write(f"**Subtotal:** ${subtotal} | **Descuento Promo:** -$50")
     st.write(f"### **Total a cobrar:** ${total}")
+    
     if st.button("✅ Registrar Venta", use_container_width=True):
+        # Calculamos cuánto vale cada boleto realmente en esta venta
+        ingreso_por_boleto = total / len(boletos)
+        
         for b in boletos:
-            boletos_ref.child(b).update({"estado":"ocupado", "dueño":nombre, "telefono":telefono, "notificado":False, "vendedor": v_nombre})
-        v_act = vendedores_datos[v_id].get('ventas', 0)
-        vendedores_ref.child(v_id).update({'ventas': v_act + len(boletos)})
+            boletos_ref.child(b).update({
+                "estado":"ocupado", "dueño":nombre, "telefono":telefono, 
+                "notificado":False, "vendedor": v_nombre, "ingreso": ingreso_por_boleto
+            })
+            
+        v_act_bol = vendedores_datos[v_id].get('ventas', 0)
+        v_act_ing = vendedores_datos[v_id].get('ingresos', v_act_bol * PRECIO_BOLETO) # Fallback para datos viejos
+        
+        # Guardamos boletos vendidos Y el dinero que ingresó
+        vendedores_ref.child(v_id).update({
+            'ventas': v_act_bol + len(boletos),
+            'ingresos': v_act_ing + total
+        })
+        
         st.session_state.seleccionados = []
         st.session_state.promo_activa = False
         st.rerun()
@@ -81,7 +97,10 @@ with st.sidebar:
             ocupados_list = [k for k, v in datos_boletos.items() if v['estado'] == 'ocupado']
             total_n = len(datos_boletos)
             st.progress(len(ocupados_list)/total_n if total_n > 0 else 0)
-            st.write(f"Ventas: {len(ocupados_list)}/{total_n} (${len(ocupados_list)*PRECIO_BOLETO})")
+            
+            # Total de dinero global (sumando todos los boletos para ser exactos con las promos)
+            dinero_global = sum([v.get('ingreso', PRECIO_BOLETO) for k, v in datos_boletos.items() if v['estado'] == 'ocupado'])
+            st.write(f"Ventas: {len(ocupados_list)}/{total_n} (${dinero_global:,.2f})")
             
             # WHATSAPP PENDIENTES
             st.subheader("📩 Pendientes")
@@ -102,25 +121,26 @@ with st.sidebar:
                         
                         c_env, c_can = st.columns(2)
                         if c_env.button("✅ Enviado", key=f"env_{lista[0]}"):
-                            for b in lista: 
-                                boletos_ref.child(b).update({"notificado": True})
+                            for b in lista: boletos_ref.child(b).update({"notificado": True})
                             st.rerun()
                             
-                        # LÓGICA NUEVA: RESTAR VENTAS AL CANCELAR LOTE
+                        # CANCELAR LOTE RESTANDO DINERO EXACTO
                         if c_can.button("🚫 Cancelar Lote", key=f"can_{lista[0]}", type="primary"):
                             nom_vendedor = datos_boletos[lista[0]].get('vendedor', '')
-                            v_id_target = None
-                            for vid, vinfo in vendedores_datos.items():
-                                if vinfo.get('nombre') == nom_vendedor:
-                                    v_id_target = vid
-                                    break
+                            v_id_target = next((vid for vid, v in vendedores_datos.items() if v.get('nombre') == nom_vendedor), None)
                             
                             if v_id_target:
-                                v_actuales = vendedores_datos[v_id_target].get('ventas', 0)
-                                vendedores_ref.child(v_id_target).update({'ventas': max(0, v_actuales - len(lista))})
-
+                                v_act_bol = vendedores_datos[v_id_target].get('ventas', 0)
+                                v_act_ing = vendedores_datos[v_id_target].get('ingresos', v_act_bol * PRECIO_BOLETO)
+                                dinero_a_restar = sum([datos_boletos[b].get('ingreso', PRECIO_BOLETO) for b in lista])
+                                
+                                vendedores_ref.child(v_id_target).update({
+                                    'ventas': max(0, v_act_bol - len(lista)),
+                                    'ingresos': max(0, v_act_ing - dinero_a_restar)
+                                })
+                            
                             for b in lista: 
-                                boletos_ref.child(b).update({"estado":"disponible","dueño":"","telefono":"","notificado":False,"vendedor":""})
+                                boletos_ref.child(b).update({"estado":"disponible","dueño":"","telefono":"","notificado":False,"vendedor":"","ingreso":0})
                             st.rerun()
 
             # BUSCADOR POR BOLETO
@@ -130,29 +150,31 @@ with st.sidebar:
                 info_a = datos_boletos[b_adm]
                 st.info(f"👤 **{info_a['dueño']}**\n📞 **{info_a['telefono']}**")
                 
-                # LÓGICA NUEVA: RESTAR VENTA AL LIBERAR UN SOLO NÚMERO
+                # LIBERAR UNO SOLO RESTANDO DINERO EXACTO
                 if st.button("🔓 Liberar Número"):
                     nom_vendedor = info_a.get('vendedor', '')
-                    v_id_target = None
-                    for vid, vinfo in vendedores_datos.items():
-                        if vinfo.get('nombre') == nom_vendedor:
-                            v_id_target = vid
-                            break
-                            
+                    v_id_target = next((vid for vid, v in vendedores_datos.items() if v.get('nombre') == nom_vendedor), None)
+                    
                     if v_id_target:
-                        v_actuales = vendedores_datos[v_id_target].get('ventas', 0)
-                        vendedores_ref.child(v_id_target).update({'ventas': max(0, v_actuales - 1)})
+                        v_act_bol = vendedores_datos[v_id_target].get('ventas', 0)
+                        v_act_ing = vendedores_datos[v_id_target].get('ingresos', v_act_bol * PRECIO_BOLETO)
+                        dinero_a_restar = info_a.get('ingreso', PRECIO_BOLETO)
+                        
+                        vendedores_ref.child(v_id_target).update({
+                            'ventas': max(0, v_act_bol - 1),
+                            'ingresos': max(0, v_act_ing - dinero_a_restar)
+                        })
 
-                    boletos_ref.child(b_adm).update({"estado":"disponible","dueño":"","telefono":"","vendedor":"","notificado":False})
+                    boletos_ref.child(b_adm).update({"estado":"disponible","dueño":"","telefono":"","vendedor":"","notificado":False,"ingreso":0})
                     st.rerun()
 
-            # GESTIÓN DE EQUIPO Y CORTE DE CAJA
-            st.subheader("👥 Equipo")
+            # GESTIÓN DE EQUIPO
+            st.subheader("👥 Vendedores")
             with st.expander("Añadir / Eliminar"):
                 nv = st.text_input("Nombre:")
                 cv = st.text_input("Clave:", type="password")
                 if st.button("Crear"):
-                    vendedores_ref.push({'nombre': nv, 'clave': cv, 'ventas': 0}); st.rerun()
+                    vendedores_ref.push({'nombre': nv, 'clave': cv, 'ventas': 0, 'ingresos': 0}); st.rerun()
                 st.divider()
                 if vendedores_datos:
                     v_del_map = {v['nombre']: k for k, v in vendedores_datos.items()}
@@ -160,16 +182,18 @@ with st.sidebar:
                     if st.button("🗑️ Eliminar Definitivamente", type="primary"):
                         vendedores_ref.child(v_del_map[target]).delete(); st.rerun()
 
+            # CORTE DE CAJA (AHORA MUESTRA INGRESOS REALES)
+            st.subheader("💰 Corte de Caja")
             if vendedores_datos:
-                st.write("**Corte de Caja Individual:**")
                 for vid, vinfo in vendedores_datos.items():
                     v_ventas = vinfo.get('ventas', 0)
+                    v_ingresos = vinfo.get('ingresos', v_ventas * PRECIO_BOLETO) # Fallback para datos viejos
                     col_n, col_r = st.columns([3, 2])
                     with col_n:
-                        st.write(f"**{vinfo['nombre']}**: {v_ventas} boletos (${v_ventas * PRECIO_BOLETO})")
+                        st.write(f"**{vinfo['nombre']}**: {v_ventas} boletos (${v_ingresos:,.2f})")
                     with col_r:
                         if st.button("🔄 Reset", key=f"rst_{vid}"):
-                            vendedores_ref.child(vid).update({'ventas': 0})
+                            vendedores_ref.child(vid).update({'ventas': 0, 'ingresos': 0})
                             st.rerun()
 
             # EXTRAS
