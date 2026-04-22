@@ -230,57 +230,90 @@ with st.sidebar:
 # --- 5. INTERFAZ VENDEDOR ---
 st.title("🎟️ Sistema de Rifas - Apoyo Estudiantil")
 
-# Estilo CSS para forzar la cuadrícula en móviles y reducir espacios
+# --- 🎨 CSS PARA FORZAR CUADRÍCULA EN MÓVIL ---
 st.markdown("""
     <style>
-    /* Forzar que las columnas no se apilen en pantallas pequeñas */
+    /* Forzar 5 columnas en cualquier pantalla */
     [data-testid="column"] {
         width: calc(20% - 5px) !important;
         flex: 1 1 calc(20% - 5px) !important;
         min-width: calc(20% - 5px) !important;
     }
-    /* Reducir el espacio entre botones para que quepan más */
+    /* Botones más compactos */
     div.stButton > button {
         width: 100%;
-        padding: 0.2rem 0rem;
-        font-size: 14px !important;
+        padding: 5px 0px !important;
+        font-size: 12px !important;
     }
-    /* Eliminar el margen excesivo de Streamlit */
+    /* Reducir espacios entre elementos */
     [data-testid="stHorizontalBlock"] {
         gap: 5px !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# ... (Aquí va tu código de inputs: nombre, whatsapp, vendedor, etc.) ...
-# Asegúrate de mantener la lógica de confirmación de venta y botones de ayuda que ya tenías
+# 1. Inputs de datos (Los definimos ANTES de usarlos)
+c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 1.2])
+with c1: n_comp = st.text_input("👤 Nombre Cliente:")
+with c2: t_comp = st.text_input("📞 WhatsApp (10 dígitos):")
+with c3: 
+    v_opc = {v['nombre']: k for k, v in vendedores_datos.items()}
+    v_sel = st.selectbox("🧤 Vendedor:", ["Seleccionar..."] + list(v_opc.keys()))
+with c4: c_vend_v = st.text_input("🔑 Clave:", type="password")
 
 st.divider()
-st.write(f"Seleccionados: {', '.join(st.session_state.seleccionados)}")
 
-# --- CUADRÍCULA DE BOLETOS FORZADA ---
-# Usaremos 5 columnas por fila, lo cual es ideal para celular
-cols_per_row = 5
+# 2. Cantidad de boletos (Variable 'cant' fundamental)
+cant = st.number_input("🎟️ ¿Cuántos boletos?", min_value=1, max_value=len(datos_boletos), value=1)
+
+# 3. Lógica de Confirmación de Venta
+if len(st.session_state.seleccionados) == cant:
+    if n_comp and v_sel != "Seleccionar...":
+        v_id = v_opc[v_sel]
+        if c_vend_v == vendedores_datos[v_id]['clave']:
+            confirmar_venta(n_comp, t_comp, st.session_state.seleccionados, v_id, v_sel)
+        elif c_vend_v != "":
+            st.error("🔑 Clave incorrecta.")
+
+# 4. Botones de ayuda
+col_a, col_l, _ = st.columns([2, 2, 6])
+if col_a.button("🎲 Aleatorio"):
+    libres = [n for n, i in datos_boletos.items() if i['estado'] == 'disponible' and n not in st.session_state.seleccionados]
+    if len(libres) >= (cant - len(st.session_state.seleccionados)):
+        st.session_state.seleccionados.extend(random.sample(libres, cant - len(st.session_state.seleccionados)))
+        st.rerun()
+
+if col_l.button("🗑️ Limpiar"):
+    st.session_state.seleccionados = []
+    st.rerun()
+
+st.write(f"Seleccionados: **{', '.join(st.session_state.seleccionados)}**")
+
+# --- 5. RENDER DE CUADRÍCULA (5 COLUMNAS) ---
+st.divider()
 boletos_ordenados = sorted(datos_boletos.items())
+cols_fijas = 5 # Esto es lo mejor para el ancho del celular
 
-# Creamos las filas necesarias
-for i in range(0, len(boletos_ordenados), cols_per_row):
-    fila_boletos = boletos_ordenados[i : i + cols_per_row]
-    columnas = st.columns(cols_per_row)
+for i in range(0, len(boletos_ordenados), cols_fijas):
+    fila = boletos_ordenados[i : i + cols_fijas]
+    columnas = st.columns(cols_fijas)
     
-    for idx, (num, info) in enumerate(fila_boletos):
+    for idx, (num, info) in enumerate(fila):
         with columnas[idx]:
+            # Lógica de estados del botón
             if info['estado'] == 'disponible':
                 if num in st.session_state.seleccionados:
                     if st.button(f"🟡{num}", key=f"b_{num}"):
                         st.session_state.seleccionados.remove(num)
                         st.rerun()
                 else:
-                    if st.button(f"{num}", key=f"b_{num}", disabled=len(st.session_state.seleccionados) >= cant):
+                    # Aquí es donde fallaba: 'cant' ya está definida arriba
+                    deshabilitado = len(st.session_state.seleccionados) >= cant
+                    if st.button(f"{num}", key=f"b_{num}", disabled=deshabilitado):
                         if n_comp:
                             st.session_state.seleccionados.append(num)
                             st.rerun()
                         else:
-                            st.warning("Nombre")
+                            st.warning("Falta nombre")
             else:
                 st.button("❌", key=f"b_{num}", disabled=True)
