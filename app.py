@@ -208,28 +208,55 @@ if cl.button("🗑️ Limpiar"):
 
 st.write(f"Seleccionados: **{', '.join(st.session_state.seleccionados)}**")
 
-# --- 7. CUADRÍCULA ---
+# --- 7. CUADRÍCULA FLUIDA (SE ACOMODA SOLA) ---
 st.divider()
-st.markdown("<style>div.stButton > button {width:100% !important;}</style>", unsafe_allow_html=True)
+
+# Este CSS es la clave: 
+# 1. Quita el límite de ancho de las columnas.
+# 2. Hace que los botones se mantengan en una cuadrícula flexible.
+st.markdown("""
+    <style>
+    /* Forzamos a que el contenedor de columnas sea flexible y use todo el ancho */
+    [data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        justify-content: flex-start !important;
+    }
+    
+    /* Definimos el tamaño fijo de cada "celda" de boleto */
+    [data-testid="column"] {
+        flex: 0 1 70px !important; /* Cada cuadro medirá 70px de ancho */
+        min-width: 70px !important;
+        margin-bottom: 5px !important;
+    }
+
+    div.stButton > button {
+        width: 100% !important;
+        padding: 5px 0px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 boletos_lista = sorted(datos_boletos.items())
-cols_n = 10
-for i in range(0, len(boletos_lista), cols_n):
-    fila = boletos_lista[i : i + cols_n]
-    cols = st.columns(cols_n)
-    for idx, (num, info) in enumerate(fila):
-        with cols[idx]:
-            if info['estado'] == 'disponible':
-                if num in st.session_state.seleccionados:
-                    if st.button(f"🟡{num}", key=f"n_{num}"):
-                        st.session_state.seleccionados.remove(num)
-                        st.rerun()
-                else:
-                    des = len(st.session_state.seleccionados) >= cant
-                    if st.button(num, key=f"n_{num}", disabled=des):
-                        if n_comp:
-                            st.session_state.seleccionados.append(num)
-                            st.rerun()
-                        else: st.warning("Nombre")
+
+# El truco: Creamos tantas columnas como boletos existan.
+# El CSS de arriba se encarga de "romper" la línea cuando ya no quepan más a lo ancho.
+cols = st.columns(len(boletos_lista))
+
+for i, (num, info) in enumerate(boletos_lista):
+    with cols[i]:
+        if info['estado'] == 'disponible':
+            if num in st.session_state.seleccionados:
+                if st.button(f"🟡{num}", key=f"n_{num}"):
+                    st.session_state.seleccionados.remove(num)
+                    st.rerun()
             else:
-                st.button("❌", key=f"n_{num}", disabled=True)
+                des = len(st.session_state.seleccionados) >= cant
+                if st.button(num, key=f"n_{num}", disabled=des):
+                    if n_comp:
+                        st.session_state.seleccionados.append(num)
+                        st.rerun()
+                    else:
+                        st.warning("Nombre")
+        else:
+            st.button("❌", key=f"n_{num}", disabled=True)
