@@ -17,31 +17,25 @@ st.set_page_config(
 
 # --- 1. CONEXIÓN A FIREBASE (VERSIÓN BLINDADA) ---
 # --- 1. CONEXIÓN A FIREBASE (VERSIÓN SIN ARCHIVOS) ---
+# --- 1. CONEXIÓN A FIREBASE (VERSIÓN DIRECTA) ---
 if not firebase_admin._apps:
     try:
-        if "firebase_json" in st.secrets:
-            # Extraemos como diccionario
-            cred_info = dict(st.secrets["firebase_json"])
+        if "FIREBASE_RAW_JSON" in st.secrets:
+            # Cargamos el string de los secrets
+            cred_dict = json.loads(st.secrets["FIREBASE_RAW_JSON"])
             
-            # Limpieza total de la llave: 
-            # 1. Quitamos espacios accidentales
-            # 2. Arreglamos los saltos de línea \n
-            # 3. Quitamos posibles comillas extra
-            raw_key = cred_info["private_key"]
-            clean_key = raw_key.replace("\\n", "\n").strip().strip('"')
-            cred_info["private_key"] = clean_key
+            # Limpieza básica por si el copiado agrega basura
+            if "private_key" in cred_dict:
+                cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
             
-            # Inicializamos DIRECTO con el diccionario, sin archivo temporal
-            cred = credentials.Certificate(cred_info)
+            # Inicialización directa con el diccionario
+            cred = credentials.Certificate(cred_dict)
             firebase_admin.initialize_app(cred, {
                 'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/'
             })
         else:
-            # Local
-            cred = credentials.Certificate("credenciales.json")
-            firebase_admin.initialize_app(cred, {
-                'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/'
-            })
+            st.error("❌ No se encontró el secreto FIREBASE_RAW_JSON.")
+            st.stop()
     except Exception as e:
         st.error(f"❌ Error de conexión: {e}")
         st.stop()
