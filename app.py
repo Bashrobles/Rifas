@@ -15,32 +15,43 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. CSS PARA RESPONSIVIDAD (PC vs MÓVIL) ---
+# --- 2. CSS PARA RESPONSIVIDAD (VERSIÓN GRID FORZADO) ---
 st.markdown("""
     <style>
-    /* Estilo para que los botones llenen su columna */
+    /* Estilo para los botones */
     div.stButton > button {
         width: 100% !important;
-        padding: 5px 0px !important;
-        font-size: 14px !important;
+        padding: 4px 0px !important;
+        font-size: 12px !important;
     }
-    
-    /* Eliminar espacios excesivos en móviles */
+
+    /* FUERZA BRUTA: Cuadrícula en Móvil */
     @media (max-width: 768px) {
-        [data-testid="column"] {
-            flex: 1 1 18% !important;
-            min-width: 18% !important;
-        }
+        /* Buscamos el contenedor de las columnas */
         [data-testid="stHorizontalBlock"] {
-            gap: 3px !important;
+            display: grid !important;
+            grid-template-columns: repeat(5, 1fr) !important; /* 5 columnas fijas */
+            gap: 4px !important;
+        }
+        /* Anulamos el comportamiento de columna de Streamlit */
+        [data-testid="column"] {
+            width: 100% !important;
+            min-width: 0px !important;
+            flex: none !important;
         }
     }
-    
-    /* Ajuste para PC para que no se estiren de más */
+
+    /* Ajuste para PC (10 columnas) */
     @media (min-width: 769px) {
+        [data-testid="stHorizontalBlock"] {
+            display: grid !important;
+            grid-template-columns: repeat(10, 1fr) !important;
+            gap: 8px !important;
+        }
         [data-testid="column"] {
-            flex: 1 1 9% !important;
-            min-width: 9% !important;
+            width: 100% !important;
+            min-width: 0px !important;
+            flex: none !important;
         }
     }
     </style>
@@ -208,9 +219,32 @@ if cl.button("🗑️ Limpiar"):
 
 st.write(f"Seleccionados: {', '.join(st.session_state.seleccionados)}")
 
-# --- 8. CUADRÍCULA DE BOLETOS ---
+# --- 8. CUADRÍCULA DE BOLETOS (VERSIÓN GRID ÚNICO) ---
 st.divider()
 boletos_lista = sorted(datos_boletos.items())
+
+# Creamos un solo bloque de columnas (Streamlit repartirá los botones en el grid de CSS)
+# Ponemos 10 columnas, pero el CSS 'grid-template-columns' es el que manda al final
+columnas = st.columns(10)
+
+for i, (num, info) in enumerate(boletos_lista):
+    # Usamos el operador módulo para ciclar entre las columnas creadas
+    with columnas[i % 10]:
+        if info['estado'] == 'disponible':
+            if num in st.session_state.seleccionados:
+                if st.button(f"🟡{num}", key=f"btn_{num}"):
+                    st.session_state.seleccionados.remove(num)
+                    st.rerun()
+            else:
+                des = len(st.session_state.seleccionados) >= cant
+                if st.button(num, key=f"btn_{num}", disabled=des):
+                    if cliente:
+                        st.session_state.seleccionados.append(num)
+                        st.rerun()
+                    else:
+                        st.warning("Nombre")
+        else:
+            st.button("❌", key=f"btn_{num}", disabled=True)
 
 # Usamos 10 columnas en el código, el CSS de arriba las ajustará a 5 en móvil
 cols = st.columns(10)
