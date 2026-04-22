@@ -69,7 +69,7 @@ def confirmar_venta(nombre, telefono, boletos, v_id, v_nombre, con_promo):
         st.session_state.promo_activa = False
         st.rerun()
 
-# --- 5. PANEL ADMINISTRADOR (TODAS LAS FUNCIONES) ---
+# --- 5. PANEL ADMINISTRADOR ---
 with st.sidebar:
     st.header("⚙️ Panel de Control")
     if st.toggle("Desbloquear Modo Admin"):
@@ -102,27 +102,52 @@ with st.sidebar:
                         
                         c_env, c_can = st.columns(2)
                         if c_env.button("✅ Enviado", key=f"env_{lista[0]}"):
-                            # Solución del bucle: rerun fuera del for
                             for b in lista: 
                                 boletos_ref.child(b).update({"notificado": True})
                             st.rerun()
+                            
+                        # LÓGICA NUEVA: RESTAR VENTAS AL CANCELAR LOTE
                         if c_can.button("🚫 Cancelar Lote", key=f"can_{lista[0]}", type="primary"):
-                            # Solución del bucle: rerun fuera del for
+                            nom_vendedor = datos_boletos[lista[0]].get('vendedor', '')
+                            v_id_target = None
+                            for vid, vinfo in vendedores_datos.items():
+                                if vinfo.get('nombre') == nom_vendedor:
+                                    v_id_target = vid
+                                    break
+                            
+                            if v_id_target:
+                                v_actuales = vendedores_datos[v_id_target].get('ventas', 0)
+                                vendedores_ref.child(v_id_target).update({'ventas': max(0, v_actuales - len(lista))})
+
                             for b in lista: 
                                 boletos_ref.child(b).update({"estado":"disponible","dueño":"","telefono":"","notificado":False,"vendedor":""})
                             st.rerun()
 
-            # BUSCADOR POR BOLETO (Muestra Nombre y Teléfono)
+            # BUSCADOR POR BOLETO
             st.subheader("🔍 Buscar")
             if ocupados_list:
                 b_adm = st.selectbox("Elegir boleto vendido:", sorted(ocupados_list, key=int))
                 info_a = datos_boletos[b_adm]
                 st.info(f"👤 **{info_a['dueño']}**\n📞 **{info_a['telefono']}**")
+                
+                # LÓGICA NUEVA: RESTAR VENTA AL LIBERAR UN SOLO NÚMERO
                 if st.button("🔓 Liberar Número"):
-                    boletos_ref.child(b_adm).update({"estado":"disponible","dueño":"","telefono":"","vendedor":"","notificado":False}); st.rerun()
+                    nom_vendedor = info_a.get('vendedor', '')
+                    v_id_target = None
+                    for vid, vinfo in vendedores_datos.items():
+                        if vinfo.get('nombre') == nom_vendedor:
+                            v_id_target = vid
+                            break
+                            
+                    if v_id_target:
+                        v_actuales = vendedores_datos[v_id_target].get('ventas', 0)
+                        vendedores_ref.child(v_id_target).update({'ventas': max(0, v_actuales - 1)})
 
-            # GESTIÓN DE EQUIPO
-            st.subheader("👥 Vendedores")
+                    boletos_ref.child(b_adm).update({"estado":"disponible","dueño":"","telefono":"","vendedor":"","notificado":False})
+                    st.rerun()
+
+            # GESTIÓN DE EQUIPO Y CORTE DE CAJA
+            st.subheader("👥 Equipo")
             with st.expander("Añadir / Eliminar"):
                 nv = st.text_input("Nombre:")
                 cv = st.text_input("Clave:", type="password")
@@ -135,9 +160,8 @@ with st.sidebar:
                     if st.button("🗑️ Eliminar Definitivamente", type="primary"):
                         vendedores_ref.child(v_del_map[target]).delete(); st.rerun()
 
-            # CORTE DE CAJA POR VENDEDOR (NUEVO)
-            st.subheader("💰 Corte de Caja")
             if vendedores_datos:
+                st.write("**Corte de Caja Individual:**")
                 for vid, vinfo in vendedores_datos.items():
                     v_ventas = vinfo.get('ventas', 0)
                     col_n, col_r = st.columns([3, 2])
@@ -149,6 +173,7 @@ with st.sidebar:
                             st.rerun()
 
             # EXTRAS
+            st.divider()
             st.subheader("📊 Reportes y Config")
             csv_str = "Nombre,Telefono,Boletos\n"
             for n, i in datos_boletos.items():
@@ -181,7 +206,6 @@ st.divider()
 col_c, col_m = st.columns([2, 3])
 with col_c:
     cant = st.number_input("🎟️ Cantidad de boletos:", min_value=1, value=1)
-    # PROMOCIÓN (Solicitud: -50 pesos con compra min 4 boletos)
     if cant >= 4:
         st.session_state.promo_activa = st.toggle("✨ Aplicar Promoción (-$50)", value=st.session_state.promo_activa)
     else:
@@ -198,7 +222,7 @@ with col_m:
                     st.session_state.seleccionados.append(n_p)
         st.rerun()
 
-# Ayuda Aleatorio (Completa lo que falta)
+# Ayuda Aleatorio
 ca, cl, _ = st.columns([2, 2, 6])
 if ca.button("🎲 Completar"):
     faltan = cant - len(st.session_state.seleccionados)
