@@ -15,42 +15,35 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 1. CONEXIÓN A FIREBASE (SISTEMA ANTIFALLOS) ---
+# --- 1. CONEXIÓN A FIREBASE (VERSIÓN BLINDADA) ---
 if not firebase_admin._apps:
     try:
-        # Intenta cargar desde Secrets (Producción en la nube)
-        if "FIREBASE_RAW_JSON" in st.secrets:
-            # Convertimos el string de los secrets a un diccionario
-            cred_dict = json.loads(st.secrets["FIREBASE_RAW_JSON"])
+        if "firebase_json" in st.secrets:
+            # Obtenemos la info directamente del diccionario de secrets
+            cred_info = dict(st.secrets["firebase_json"])
             
-            # REPARACIÓN DE LLAVE: Firebase requiere saltos de línea reales (\n)
-            # El error "InvalidPadding" suele ocurrir si esto no se limpia.
-            if "private_key" in cred_dict:
-                cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+            # LIMPIEZA AGRESIVA DE LA LLAVE
+            # Quitamos comillas accidentales y arreglamos los saltos de línea
+            raw_key = cred_info["private_key"]
+            clean_key = raw_key.replace("\\n", "\n").replace('"', '').strip()
+            cred_info["private_key"] = clean_key
             
-            # Creamos un archivo temporal para que la librería Certificate lo lea sin errores
-            with tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".json") as temp_f:
-                json.dump(cred_dict, temp_f)
-                temp_path = temp_f.name
+            # Usamos el archivo temporal para asegurar compatibilidad total con PEM
+            with tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".json") as f:
+                json.dump(cred_info, f)
+                temp_path = f.name
             
             cred = credentials.Certificate(temp_path)
             firebase_admin.initialize_app(cred, {
                 'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/'
             })
-            
-            # Borramos el temporal de la memoria por seguridad
             os.remove(temp_path)
-            
-        # Caso local (desarrollo en tu PC)
         elif os.path.exists("credenciales.json"):
+            # Caso local
             cred = credentials.Certificate("credenciales.json")
             firebase_admin.initialize_app(cred, {
                 'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/'
             })
-        else:
-            st.error("❌ No se detectaron credenciales de Firebase.")
-            st.stop()
-            
     except Exception as e:
         st.error(f"❌ Error crítico de conexión: {e}")
         st.stop()
