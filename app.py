@@ -15,49 +15,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. CSS PARA RESPONSIVIDAD (VERSIÓN GRID FORZADO) ---
-st.markdown("""
-    <style>
-    /* Estilo para los botones */
-    div.stButton > button {
-        width: 100% !important;
-        padding: 4px 0px !important;
-        font-size: 12px !important;
-    }
-
-    /* FUERZA BRUTA: Cuadrícula en Móvil */
-    @media (max-width: 768px) {
-        /* Buscamos el contenedor de las columnas */
-        [data-testid="stHorizontalBlock"] {
-            display: grid !important;
-            grid-template-columns: repeat(5, 1fr) !important; /* 5 columnas fijas */
-            gap: 4px !important;
-        }
-        /* Anulamos el comportamiento de columna de Streamlit */
-        [data-testid="column"] {
-            width: 100% !important;
-            min-width: 0px !important;
-            flex: none !important;
-        }
-    }
-
-    /* Ajuste para PC (10 columnas) */
-    @media (min-width: 769px) {
-        [data-testid="stHorizontalBlock"] {
-            display: grid !important;
-            grid-template-columns: repeat(10, 1fr) !important;
-            gap: 8px !important;
-        }
-        [data-testid="column"] {
-            width: 100% !important;
-            min-width: 0px !important;
-            flex: none !important;
-        }
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- 3. CONEXIÓN A FIREBASE ---
+# --- 2. CONEXIÓN A FIREBASE (VERSIÓN ROBUSTA) ---
 if not firebase_admin._apps:
     try:
         if "FIREBASE_RAW_JSON" in st.secrets:
@@ -83,12 +41,12 @@ if not firebase_admin._apps:
         st.error(f"Error de conexión: {e}")
         st.stop()
 
-# Referencias de Base de Datos
+# Referencias
 boletos_ref = db.reference('boletos')
 config_ref = db.reference('configuracion')
 vendedores_ref = db.reference('vendedores')
 
-# --- 4. FUNCIONES DE APOYO ---
+# --- 3. FUNCIONES DE APOYO ---
 def inicializar_bd(total=100):
     nuevos_boletos = {}
     digitos = len(str(total - 1))
@@ -104,7 +62,7 @@ def inicializar_bd(total=100):
     )
     config_ref.set({"mensaje_template": default_msg, "precio_boleto": 50.0})
 
-# Carga de datos inicial
+# Carga de datos
 datos_crudos = boletos_ref.get()
 config_datos = config_ref.get() or {}
 vendedores_datos = vendedores_ref.get() or {}
@@ -119,7 +77,6 @@ PRECIO_BOLETO = config_datos.get('precio_boleto', 0.0)
 if 'seleccionados' not in st.session_state:
     st.session_state.seleccionados = []
 
-# Procesar boletos
 datos_boletos = {}
 if isinstance(datos_crudos, list):
     for i, info in enumerate(datos_crudos):
@@ -127,7 +84,7 @@ if isinstance(datos_crudos, list):
 else:
     datos_boletos = datos_crudos
 
-# --- 5. MODALES (DIÁLOGOS) ---
+# --- 4. DIÁLOGOS ---
 @st.dialog("🛒 Confirmar Venta")
 def confirmar_venta(nombre, telefono, boletos, v_id, v_nombre):
     st.write(f"**Cliente:** {nombre} | **Vendedor:** {v_nombre}")
@@ -143,93 +100,61 @@ def confirmar_venta(nombre, telefono, boletos, v_id, v_nombre):
         st.session_state.seleccionados = []
         st.rerun()
 
-# --- 6. PANEL ADMINISTRADOR (SIDEBAR) ---
+# --- 5. SIDEBAR (ADMIN) ---
 with st.sidebar:
     st.header("⚙️ Admin")
     if st.toggle("Modo Admin"):
         password = st.text_input("Clave:", type="password")
         if password == st.secrets.get("ADMIN_PASSWORD", "1234"):
             st.success("Autorizado")
-            
-            # Progreso
+            # Métricas rápidas
             total_b = len(datos_boletos)
             ocupados = [k for k, v in datos_boletos.items() if v['estado'] == 'ocupado']
-            st.write(f"Ventas: {len(ocupados)}/{total_b}")
-            st.progress(len(ocupados)/total_b)
-            
-            # Pendientes WhatsApp
-            st.subheader("📲 WhatsApp")
-            pendientes = {k: v for k, v in datos_boletos.items() if v['estado'] == 'ocupado' and not v.get('notificado')}
-            if pendientes:
-                agrupados = {}
-                for n, i in pendientes.items():
-                    key = (i['dueño'], i['telefono'])
-                    if key not in agrupados: agrupados[key] = []
-                    agrupados[key].append(n)
-                
-                for (comprador, tel), lista in agrupados.items():
-                    with st.expander(f"👤 {comprador}"):
-                        if tel:
-                            t = "".join(filter(str.isdigit, tel))
-                            if len(t) == 10: t = "52" + t
-                            m = MENSAJE_TEMPLATE.replace("{{nombre}}", comprador).replace("{{boletos}}", ", ".join(lista))
-                            st.link_button("Enviar", f"https://wa.me/{t}?text={urllib.parse.quote(m)}")
-                        if st.button("Marcar Enviado", key=f"not_{lista[0]}"):
-                            for b in lista: boletos_ref.child(b).update({"notificado": True})
-                            st.rerun()
-            
-            # Gestión de Vendedores
-            st.subheader("👥 Vendedores")
-            for vid, vinfo in vendedores_datos.items():
-                st.write(f"{vinfo['nombre']}: {vinfo.get('ventas',0)}")
+            st.metric("Ventas", f"{len(ocupados)}/{total_b}")
             
             if st.button("🚨 Reiniciar Todo"):
                 boletos_ref.delete()
                 st.rerun()
 
-# --- 7. INTERFAZ PÚBLICA / VENDEDOR ---
+# --- 6. INTERFAZ VENDEDOR ---
 st.title("🎟️ Rifa Apoyo Estudiantil")
 
-# Inputs principales: Usamos el diseño original de 4 columnas
+# Formulario (Original de 4 columnas)
 c1, c2, c3, c4 = st.columns(4)
-with c1: n_comp = st.text_input("👤 Cliente:")
-with c2: t_comp = st.text_input("📞 WhatsApp:")
+with c1: cliente = st.text_input("👤 Cliente:")
+with c2: tel = st.text_input("📞 WhatsApp:")
 with c3: 
-    v_opc = {v['nombre']: k for k, v in vendedores_datos.items()}
-    v_sel = st.selectbox("🧤 Vendedor:", ["Seleccionar..."] + list(v_opc.keys()))
-with c4: c_vend_v = st.text_input("🔑 Clave:", type="password")
+    v_nombres = {v['nombre']: k for k, v in vendedores_datos.items()}
+    v_sel = st.selectbox("🧤 Vendedor:", ["Seleccionar..."] + list(v_nombres.keys()))
+with c4: v_pass = st.text_input("🔑 Clave:", type="password")
 
 st.divider()
 
-# Proceso de Selección y Cantidad
-cant = st.number_input("🎟️ ¿Cuántos boletos?", min_value=1, max_value=len(datos_boletos), value=1)
+# Parámetros de compra
+cant = st.number_input("Boletos a comprar:", min_value=1, value=1)
 
-# Botones de ayuda (Aleatorio y Limpiar)
-col_a, col_l, _ = st.columns([2, 2, 6])
-if col_a.button("🎲 Aleatorio", use_container_width=True):
-    libres = [n for n, i in datos_boletos.items() if i['estado'] == 'disponible']
+# Lógica de venta automática
+if len(st.session_state.seleccionados) == cant and cliente and v_sel != "Seleccionar...":
+    vid = v_nombres[v_sel]
+    if v_pass == vendedores_datos[vid]['clave']:
+        confirmar_venta(cliente, tel, st.session_state.seleccionados, vid, v_sel)
+
+# Botones de ayuda
+ca, cl, _ = st.columns([2, 2, 6])
+if ca.button("🎲 Aleatorio"):
+    libres = [n for n, v in datos_boletos.items() if v['estado'] == 'disponible']
     st.session_state.seleccionados = random.sample(libres, min(cant, len(libres)))
     st.rerun()
-
-if col_l.button("🗑️ Limpiar", use_container_width=True):
+if cl.button("🗑️ Limpiar"):
     st.session_state.seleccionados = []
     st.rerun()
 
-if st.session_state.seleccionados:
-    st.info(f"Seleccionados: **{', '.join(sorted(st.session_state.seleccionados))}**")
+st.write(f"Seleccionados: **{', '.join(st.session_state.seleccionados)}**")
 
-# Lógica de Venta (Se ejecuta si ya se alcanzó la cantidad)
-if len(st.session_state.seleccionados) == cant and n_comp and v_sel != "Seleccionar...":
-    v_id = v_opc[v_sel]
-    if c_vend_v == vendedores_datos[v_id]['clave']:
-        confirmar_venta(n_comp, t_comp, st.session_state.seleccionados, v_id, v_sel)
-    elif c_vend_v != "":
-        st.error("🔑 Clave incorrecta.")
-
-# --- 8. CUADRÍCULA DE BOLETOS (ORIGINAL LIMPIA) ---
+# --- 7. CUADRÍCULA DE BOLETOS (10 COLUMNAS NATIVAS) ---
 st.divider()
 
-# El único CSS que dejaremos es para que el botón use todo el ancho de su mini-columna
+# CSS mínimo solo para ancho de botones, sin romper el layout
 st.markdown("""
     <style>
     div.stButton > button {
@@ -238,31 +163,27 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-boletos_ordenados = sorted(datos_boletos.items())
-cols_n = 10 # Regresamos a tus 10 columnas originales
+boletos_lista = sorted(datos_boletos.items())
+cols_n = 10 
 
-# Dibujamos por filas para que en PC se vea como tabla perfecta
-for i in range(0, len(boletos_ordenados), cols_n):
-    fila = boletos_ordenados[i : i + cols_n]
+for i in range(0, len(boletos_lista), cols_n):
+    fila = boletos_lista[i : i + cols_n]
     columnas = st.columns(cols_n)
     
     for idx, (num, info) in enumerate(fila):
         with columnas[idx]:
             if info['estado'] == 'disponible':
                 if num in st.session_state.seleccionados:
-                    # Amarillo si está seleccionado
-                    if st.button(f"🟡{num}", key=f"b_{num}"):
+                    if st.button(f"🟡{num}", key=f"btn_{num}"):
                         st.session_state.seleccionados.remove(num)
                         st.rerun()
                 else:
-                    # Normal si está libre
                     des = len(st.session_state.seleccionados) >= cant
-                    if st.button(num, key=f"b_{num}", disabled=des):
-                        if n_comp:
+                    if st.button(num, key=f"btn_{num}", disabled=des):
+                        if cliente:
                             st.session_state.seleccionados.append(num)
                             st.rerun()
                         else:
                             st.warning("Nombre")
             else:
-                # X si ya se vendió
-                st.button("❌", key=f"b_{num}", disabled=True)
+                st.button("❌", key=f"btn_{num}", disabled=True)
