@@ -150,7 +150,20 @@ with st.sidebar:
 st.title("🎟️ Rifa CUCEI Pro")
 st.write(f"**Precio: ${PRECIO_BOLETO} MXN**")
 
-# Inputs con Session State para limpieza
+# Función para limpiar (se llama mediante el botón)
+def limpiar_datos_vendedor():
+    # Solo reseteamos los valores que NO están ligados a widgets bloqueados
+    # O simplemente forzamos un reset de los componentes
+    st.session_state.seleccionados = []
+    st.session_state.promo_activa = False
+    # Para los inputs, usaremos una técnica de "empty keys" o simplemente rerun
+    # Pero lo más efectivo en Streamlit es resetear por fragmento o refrescar
+    for key in ["input_cliente", "input_tel", "input_clave", "manual_in"]:
+        if key in st.session_state:
+            st.session_state[key] = ""
+
+# Inputs 
+# TIP: No les pongas el mismo nombre a la variable y a la key
 c1, c2, c3, c4 = st.columns(4)
 with c1: cliente = st.text_input("👤 Cliente:", key="input_cliente")
 with c2: tel = st.text_input("📞 WhatsApp:", key="input_tel")
@@ -159,46 +172,21 @@ with c3:
     v_sel = st.selectbox("🧤 Vendedor:", ["Seleccionar..."] + list(v_opc.keys()))
 with c4: v_pass = st.text_input("🔑 Clave:", type="password", key="input_clave")
 
+# BOTÓN DE LIMPIEZA CORREGIDO
+# Usamos on_click para ejecutar la limpieza antes de renderizar
 if st.button("🗑️ Limpiar Datos Cliente", use_container_width=True):
-    st.session_state.input_cliente = ""
-    st.session_state.input_tel = ""
-    st.session_state.input_clave = ""
+    # En lugar de asignar directamente aquí (que da el error),
+    # simplemente limpiamos lo que NO es widget y forzamos el reinicio.
+    # Streamlit limpiará los widgets al no encontrar valores previos si no usamos value=
+    st.session_state.seleccionados = []
+    st.session_state.promo_activa = False
+    # Borramos las llaves del estado para que los widgets se reinicien
+    del st.session_state["input_cliente"]
+    del st.session_state["input_tel"]
+    del st.session_state["input_clave"]
     st.rerun()
 
 st.divider()
-col_c, col_m = st.columns([2, 3])
-with col_c:
-    cant = st.number_input("🎟️ Cantidad:", min_value=1, value=1)
-    if cant >= 4: st.session_state.promo_activa = st.toggle("✨ Promo (-$50)", value=st.session_state.promo_activa)
-    else: st.session_state.promo_activa = False
-
-with col_m:
-    m_in = st.text_input("🔢 Agregar manual (001, 002...):")
-    if st.button("➕ Agregar"):
-        for n in m_in.replace(",", " ").split():
-            n_p = n.zfill(len(str(len(datos_boletos)-1)))
-            if n_p in datos_boletos and datos_boletos[n_p]['estado'] == 'disponible':
-                if len(st.session_state.seleccionados) < cant and n_p not in st.session_state.seleccionados:
-                    st.session_state.seleccionados.append(n_p)
-        st.rerun()
-
-ca, cl, _ = st.columns([2, 2, 6])
-if ca.button("🎲 Completar"):
-    faltan = cant - len(st.session_state.seleccionados)
-    if faltan > 0:
-        libres = [n for n, v in datos_boletos.items() if v['estado'] == 'disponible' and n not in st.session_state.seleccionados]
-        if len(libres) >= faltan: st.session_state.seleccionados.extend(random.sample(libres, faltan)); st.rerun()
-
-if cl.button("🗑️ Limpiar Selección"):
-    st.session_state.seleccionados = []; st.rerun()
-
-st.write(f"Seleccionados: **{', '.join(sorted(st.session_state.seleccionados))}** ({len(st.session_state.seleccionados)}/{cant})")
-
-if len(st.session_state.seleccionados) == cant and cliente and v_sel != "Seleccionar...":
-    vid = v_opc[v_sel]
-    if v_pass == vendedores_datos[vid]['clave']:
-        confirmar_venta(cliente, tel, st.session_state.seleccionados, vid, v_sel, st.session_state.promo_activa)
-
 # --- 7. CUADRÍCULA 10 COLS ---
 st.divider()
 st.markdown("<style>div.stButton > button {width:100% !important;}</style>", unsafe_allow_html=True)
