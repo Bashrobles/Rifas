@@ -13,23 +13,25 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 1. CONEXIÓN A FIREBASE (MODIFICADA PARA DESPLIEGUE) ---
+# --- 1. CONEXIÓN A FIREBASE ---
 if not firebase_admin._apps:
     try:
-        # Intenta usar Secrets de Streamlit Cloud (Producción)
         if "firebase_json" in st.secrets:
+            # En la nube (Streamlit Cloud)
             cred_dict = json.loads(st.secrets["firebase_json"])
             cred = credentials.Certificate(cred_dict)
         else:
-            # Uso local con archivo físico
+            # Local
             cred = credentials.Certificate("credenciales.json")
         
         firebase_admin.initialize_app(cred, {
-            # 👇 REEMPLAZA ESTO POR TU URL DE FIREBASE
+            # 👇 ASEGÚRATE QUE ESTA URL SEA LA CORRECTA (debe empezar con https://)
             'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/' 
         })
+        st.success("Conexión con Firebase establecida.") # Esto te confirmará que entró
     except Exception as e:
-        st.error(f"Error de conexión: {e}")
+        st.error(f"❌ Error crítico al conectar con Firebase: {e}")
+        st.stop() # 🛑 Esto evita que el código siga y lance el error que te salió
 
 boletos_ref = db.reference('boletos')
 config_ref = db.reference('configuracion')
