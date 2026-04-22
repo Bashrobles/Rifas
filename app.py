@@ -19,7 +19,9 @@ if not firebase_admin._apps:
         if "firebase_json" in st.secrets:
             # En la nube
             cred_dict = json.loads(st.secrets["firebase_json"])
-            
+            # ESTA LÍNEA ES CLAVE:
+            cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+            cred = credentials.Certificate(cred_dict)
             # 🛠️ TRUCO: Reparar el formato de la llave privada si viene con errores de salto de línea
             if "private_key" in cred_dict:
                 cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
