@@ -6,7 +6,7 @@ import urllib.parse
 import json
 import tempfile
 import os
-import base6
+import base64
 
 # --- CONFIGURACIÓN INICIAL ---
 st.set_page_config(
