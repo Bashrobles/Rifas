@@ -6,6 +6,7 @@ import urllib.parse
 import json
 import tempfile
 import os
+import base6
 
 # --- CONFIGURACIÓN INICIAL ---
 st.set_page_config(
@@ -15,38 +16,39 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 1. CONEXIÓN A FIREBASE (VERSIÓN DEFINITIVA) ---
+# --- 1. CONEXIÓN A FIREBASE (GRADO INDUSTRIAL) ---
 if not firebase_admin._apps:
     try:
-        # Prioridad 1: Secrets de Streamlit Cloud (Producción)
-        if "FIREBASE_RAW_JSON" in st.secrets:
-            # Cargamos el string y lo convertimos a diccionario
-            cred_dict = json.loads(st.secrets["FIREBASE_RAW_JSON"])
+        if "FIREBASE_BASE64" in st.secrets:
+            # 1. Decodificar la base64 a un string JSON real
+            base64_str = st.secrets["FIREBASE_BASE64"]
+            decoded_bytes = base64.b64decode(base64_str)
+            cred_dict = json.loads(decoded_bytes.decode("utf-8"))
             
-            # REPARACIÓN: Convertimos el texto "\n" en saltos de línea reales
+            # 2. Reparar los saltos de línea (\n)
             if "private_key" in cred_dict:
                 cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
             
-            # Creamos archivo temporal para que Firebase lo lea sin errores de padding
-            with tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".json") as temp_f:
-                json.dump(cred_dict, temp_f)
-                temp_path = temp_f.name
+            # 3. Crear archivo temporal para Firebase
+            with tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".json") as f:
+                json.dump(cred_dict, f)
+                temp_path = f.name
             
+            # 4. Inicializar
             cred = credentials.Certificate(temp_path)
             firebase_admin.initialize_app(cred, {
                 'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/' 
             })
-            os.remove(temp_path) # Borramos rastro por seguridad
-            
-        # Prioridad 2: Archivo local (Desarrollo)
-        elif os.path.exists("credenciales.json"):
+            os.remove(temp_path)
+        else:
+            # Local
             cred = credentials.Certificate("credenciales.json")
             firebase_admin.initialize_app(cred, {
                 'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/' 
             })
-        else:
-            st.error("❌ No se encontró configuración de Firebase.")
-            st.stop()
+    except Exception as e:
+        st.error(f"❌ Error de conexión definitiva: {e}")
+        st.stop()
             
     except Exception as e:
         st.error(f"❌ Error crítico de conexión: {e}")
