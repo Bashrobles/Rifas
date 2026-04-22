@@ -14,19 +14,13 @@ st.set_page_config(
 )
 
 # --- 1. CONEXIÓN A FIREBASE ---
+
 if not firebase_admin._apps:
     try:
         if "firebase_json" in st.secrets:
-            # En la nube
-            cred_dict = json.loads(st.secrets["firebase_json"])
-            # ESTA LÍNEA ES CLAVE:
-            cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
-            cred = credentials.Certificate(cred_dict)
-            # 🛠️ TRUCO: Reparar el formato de la llave privada si viene con errores de salto de línea
-            if "private_key" in cred_dict:
-                cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
-            
-            cred = credentials.Certificate(cred_dict)
+            # Directo desde el diccionario de Secrets
+            cred_info = dict(st.secrets["firebase_json"])
+            cred = credentials.Certificate(cred_info)
         else:
             # Local
             cred = credentials.Certificate("credenciales.json")
@@ -35,8 +29,10 @@ if not firebase_admin._apps:
             'databaseURL': 'https://rifa-app-cfe3a-default-rtdb.firebaseio.com/' 
         })
     except Exception as e:
-        st.error(f"❌ Error crítico al conectar con Firebase: {e}")
+        st.error(f"❌ Error crítico: {e}")
         st.stop()
+
+
 boletos_ref = db.reference('boletos')
 config_ref = db.reference('configuracion')
 vendedores_ref = db.reference('vendedores')
