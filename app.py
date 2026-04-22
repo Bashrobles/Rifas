@@ -265,8 +265,20 @@ st.write(f"Seleccionados: **{', '.join(sorted(st.session_state.seleccionados))}*
 if len(st.session_state.seleccionados) == cant and cliente and v_sel != "Seleccionar...":
     vid = v_opc[v_sel]
     if v_pass == vendedores_datos[vid]['clave']:
-        confirmar_venta(cliente, tel, st.session_state.seleccionados, vid, v_sel, st.session_state.promo_activa)
-
+        
+        # 1. Extraemos solo los números de lo que haya escrito el usuario
+        tel_limpio = "".join(filter(str.isdigit, tel))
+        
+        # 2. Verificamos que sean exactamente 10 dígitos
+        if len(tel_limpio) == 10:
+            # Pasamos el tel_limpio para que en la base de datos se guarde perfecto
+            confirmar_venta(cliente, tel_limpio, st.session_state.seleccionados, vid, v_sel, st.session_state.promo_activa)
+        else:
+            # 3. Si no son 10, mostramos una alerta y detenemos la venta
+            st.error("⚠️ El número de WhatsApp debe tener exactamente 10 dígitos (Ej: 3312345678).")
+            
+    else:
+        st.error("🔑 Clave de vendedor incorrecta.")
 # --- 7. CUADRÍCULA ESTABLE (10 COLS PC) ---
 st.divider()
 st.markdown("<style>div.stButton > button {width:100% !important;}</style>", unsafe_allow_html=True)
